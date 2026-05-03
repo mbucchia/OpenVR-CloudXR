@@ -1,0 +1,12 @@
+[submodule "external/openvr"]
+	path = external/openvr
+	url = https://github.com/ValveSoftware/openvr.git
+[submodule "external/cJSON"]
+	path = external/cJSON
+	url = https://github.com/DaveGamble/cJSON.git
+[submodule "external/OpenXR-MixedReality"]
+	path = external/OpenXR-MixedReality
+	url = https://github.com/mbucchia/OpenXR-MixedReality.git
+[submodule "external/cloudxr"]
+	path = external/cloudxr
+	url = https://github.com/mbucchia/CloudXR-SDK.git

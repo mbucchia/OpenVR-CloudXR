@@ -1,0 +1,12 @@
+# Blender 3.5.0 MTL File: 'None'
+# www.blender.org
+
+newmtl mat_create_button_L
+Ns 0.000000
+Ka 1.000000 1.000000 1.000000
+Ks 0.500000 0.500000 0.500000
+Ke 0.000000 0.000000 0.000000
+Ni 1.500000
+illum 2
+map_Kd playstation_vr2_sense_left.png
+map_d playstation_vr2_sense_left.png

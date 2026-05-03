@@ -1,0 +1,7 @@
+{
+	"name" : "cloudxr",
+
+	"hmd_presence": [
+		"*.*"
+	]
+}

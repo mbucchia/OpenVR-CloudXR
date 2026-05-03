@@ -1,0 +1,68 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.14.37111.16
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "driver_cloudxr", "driver_cloudxr\driver_cloudxr.vcxproj", "{BF62D7E2-F067-4A52-B666-9DCC7B8B98D4}"
+	ProjectSection(ProjectDependencies) = postProject
+		{0232C71A-4F88-494D-BA0D-E71EEFCB4CB4} = {0232C71A-4F88-494D-BA0D-E71EEFCB4CB4}
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Base", "Base", "{02EA681E-C7D8-13C7-8484-4AC65E1B71E8}"
+	ProjectSection(SolutionItems) = preProject
+		base\resources\input\cloudxrhmd_profile.json = base\resources\input\cloudxrhmd_profile.json
+		base\resources\settings\default.vrsettings = base\resources\settings\default.vrsettings
+		base\driver.vrdrivermanifest = base\driver.vrdrivermanifest
+		base\Register-Driver.bat = base\Register-Driver.bat
+		base\resources\settings\settingsschema.vrsettings = base\resources\settings\settingsschema.vrsettings
+		base\Start-SteamVR.bat = base\Start-SteamVR.bat
+		base\THIRD_PARTY = base\THIRD_PARTY
+		base\Unregister-Driver.bat = base\Unregister-Driver.bat
+		base\resources\input\vrcompositor_bindings_cloudxrhmd.json = base\resources\input\vrcompositor_bindings_cloudxrhmd.json
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Scripts", "Scripts", "{1A3B16D0-A9F6-47D4-A361-2198844EE0A7}"
+	ProjectSection(SolutionItems) = preProject
+		Assemble-Distribution.bat = Assemble-Distribution.bat
+		version.info = version.info
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "client_utility", "client_utility\client_utility.vcxproj", "{0232C71A-4F88-494D-BA0D-E71EEFCB4CB4}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{8EC462FD-D22E-90A8-E5CE-7E832BA40C5D}"
+	ProjectSection(SolutionItems) = preProject
+		.gitignore = .gitignore
+		LICENSE = LICENSE
+		.github\workflows\msbuild.yml = .github\workflows\msbuild.yml
+		README.md = README.md
+		version.info = version.info
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_service", "test_service\test_service.vcxproj", "{E944132B-4352-4113-AAB2-B61BC54EFEE6}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Release|x64 = Release|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{BF62D7E2-F067-4A52-B666-9DCC7B8B98D4}.Debug|x64.ActiveCfg = Debug|x64
+		{BF62D7E2-F067-4A52-B666-9DCC7B8B98D4}.Debug|x64.Build.0 = Debug|x64
+		{BF62D7E2-F067-4A52-B666-9DCC7B8B98D4}.Release|x64.ActiveCfg = Release|x64
+		{BF62D7E2-F067-4A52-B666-9DCC7B8B98D4}.Release|x64.Build.0 = Release|x64
+		{0232C71A-4F88-494D-BA0D-E71EEFCB4CB4}.Debug|x64.ActiveCfg = Debug|x64
+		{0232C71A-4F88-494D-BA0D-E71EEFCB4CB4}.Debug|x64.Build.0 = Debug|x64
+		{0232C71A-4F88-494D-BA0D-E71EEFCB4CB4}.Release|x64.ActiveCfg = Release|x64
+		{0232C71A-4F88-494D-BA0D-E71EEFCB4CB4}.Release|x64.Build.0 = Release|x64
+		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Debug|x64.ActiveCfg = Debug|x64
+		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Debug|x64.Build.0 = Debug|x64
+		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Release|x64.ActiveCfg = Release|x64
+		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Release|x64.Build.0 = Release|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {E9197C88-0CDD-4560-BF2C-A784749703CA}
+	EndGlobalSection
+EndGlobal

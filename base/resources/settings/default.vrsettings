@@ -1,0 +1,21 @@
+{
+  "driver_cloudxr": {
+    "loadPriority": 1,
+    // Set to load a 3rd party OpenXR runtime registered in AvailableRuntimes.
+    //"openxr_runtime_json": "meta_openxr_simulator.json",
+    "use_windows_key": 3,
+    "motion_controllers_personality": 0,
+    "enable_hand_tracking": false,
+    "head_prediction_blend": 0,
+    "controller_prediction_blend": 0,
+    "running_start": 1,
+    "start_cloudxr_service": false,
+    "cloudxr_profile": "auto-native",
+    "cloudxr_audio_enable": true,
+    "cloudxr_foveation_settings": false,
+    "cloudxr_foveation_warped_width": 2048,
+    "cloudxr_use_10_bits": false,
+    "cloudxr_foveation_enable": true,
+    "prefer_d3d12": false
+  }
+}

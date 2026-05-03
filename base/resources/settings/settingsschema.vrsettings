@@ -1,0 +1,188 @@
+[
+  {
+    "title": "CloudXR",
+    "controller": "cloudxr_settings",
+    "show_without_hmd": true,
+    "values": [
+      {
+        "name": "/settings/driver_cloudxr/use_windows_key",
+        "control": "select",
+        "label": "Use System/Windows Button",
+        "type": "int",
+        "options": [
+          {
+            "value": 0,
+            "label": "None"
+          },
+          {
+            "value": 1,
+            "label": "Controllers Only"
+          },
+          {
+            "value": 2,
+            "label": "Keyboard Only"
+          },
+          {
+            "value": 3,
+            "label": "Both"
+          }
+        ]
+      },
+      {
+        "name": "/settings/driver_cloudxr/motion_controllers_personality",
+        "control": "select",
+        "label": "Motion Controllers Personality",
+        "type": "int",
+        "options": [
+          {
+            "value": 0,
+            "label": "PlayStation VR2 Sense"
+          },
+          {
+            "value": 1,
+            "label": "Oculus Touch"
+          }
+        ],
+        "requires_restart": true
+      },
+      {
+        "name": "/settings/driver_cloudxr/enable_hand_tracking",
+        "control": "toggle",
+        "label": "Enable Hand Tracking (When Supported)",
+        "requires_restart": true
+      },
+      {
+        "name": "/settings/driver_cloudxr/head_prediction_blend",
+        "control": "slider",
+        "type": "float",
+        "label": "Head Tracking Prediction Blend",
+        "advanced_only": true,
+        "min": -1,
+        "max": 1,
+        "step": 0.05,
+        "decimals": 2
+      },
+      {
+        "name": "/settings/driver_cloudxr/controller_prediction_blend",
+        "control": "slider",
+        "type": "float",
+        "label": "Motion Controller Tracking Prediction Blend",
+        "advanced_only": true,
+        "min": -1,
+        "max": 1,
+        "step": 0.05,
+        "decimals": 2
+      },
+      {
+        "name": "/settings/driver_cloudxr/running_start",
+        "control": "slider",
+        "type": "float",
+        "label": "Running Start",
+        "advanced_only": true,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "decimals": 2
+      },
+      {
+        "name": "/settings/driver_cloudxr/start_cloudxr_service",
+        "control": "toggle",
+        "label": "Start Built-in CloudXR Service",
+
+        "requires_restart": true
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_profile",
+        "control": "select",
+        "label": "CloudXR Device Profile",
+        "type": "string",
+        "options": [
+          {
+            "value": "auto-native",
+            "label": "Auto-Native"
+          },
+          {
+            "value": "auto-webrtc",
+            "label": "Auto-WebRTC"
+          }
+        ],
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_audio_enable",
+        "control": "toggle",
+        "label": "CloudXR Audio Streaming",
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_foveation_settings",
+        "control": "toggle",
+        "label": "CloudXR Video Streaming Settings",
+        "advanced_only": true,
+        "on_label": "Custom",
+        "off_label": "Automatic",
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_foveation_warped_width",
+        "control": "slider",
+        "type": "int",
+        "label": "CloudXR Streaming Resolution (Per Eye)",
+        "advanced_only": true,
+        "min": 1280,
+        "max": 2048,
+        "step": 16,
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true,
+          "/settings/driver_cloudxr/cloudxr_foveation_settings": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_use_10_bits",
+        "control": "toggle",
+        "label": "CloudXR 10-bit Streaming",
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true,
+          "/settings/driver_cloudxr/cloudxr_foveation_settings": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_foveation_enable",
+        "control": "toggle",
+        "label": "CloudXR Foveated Streaming",
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true,
+          "/settings/driver_cloudxr/cloudxr_foveation_settings": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/developer_mode",
+        "type": "bool"
+      },
+      {
+        "name": "/settings/driver_cloudxr/prefer_d3d12",
+        "control": "toggle",
+        "label": "Prefer Direct3D 12 Backend",
+        "advanced_only": true,
+        "on_label": "Yes",
+        "off_label": "No",
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/developer_mode": true
+        }
+      }
+    ]
+  }
+]

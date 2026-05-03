@@ -1,0 +1,369 @@
+{
+  "to_controller_type" : "playstation_vr2_sense",
+  "layouts" : [
+    {
+      "priority" : 100,
+      "from_controller_type" : "oculus_touch",
+      "simulate_controller_type" : true,
+      "simulate_render_model" : true,
+      "simulate_HMD" : true,
+      "autoremappings" : [],
+      "remappings" : [
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/application_menu",
+              "mode": "button",
+              "input": "click"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/options",
+              "mode": "complex_button",
+              "input": "single",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/trigger"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/r2",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/trigger"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/l2",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/grip"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/r1",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/grip"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/l1",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/joystick"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/right_stick",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/joystick"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/left_stick",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/x"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/square",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/y"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/triangle",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/a"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/cross",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/b"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/circle",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        }
+      ]
+    },
+    {
+      "priority" : 90,
+      "from_controller_type" : "knuckles",
+      "simulate_controller_type" : true,
+      "simulate_render_model" : true,
+      "simulate_HMD" : true,
+      "autoremappings" : [],
+      "remappings" : [
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/trigger"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/r2",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/trigger"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/l2",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/grip"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/r1",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/grip"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/l1",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/thumbstick"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/right_stick",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/thumbstick"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/left_stick",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/a"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/square",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/b"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/triangle",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/a"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/cross",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/b"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/circle",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        }
+      ]
+    },
+    {
+      "priority" : 20,
+      "from_controller_type" : "vive_controller",
+      "simulate_controller_type" : true,
+      "simulate_render_model" : true,
+      "simulate_HMD" : true,
+      "autoremappings" : [],
+      "remappings" : [
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/trigger"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/r2",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/trigger"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/l2",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/grip"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/r1",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/grip"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/l1",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/trackpad"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/right_stick",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/trackpad"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/left_stick",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/application_menu"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/square",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/application_menu"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/cross",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        }
+      ]
+    },
+    {
+      "priority" : 10,
+      "from_controller_type" : "khr_simple_controller",
+      "simulate_controller_type" : false,
+      "simulate_render_model" : false,
+      "simulate_HMD" : false,
+      "autoremappings" : [],
+      "remappings" : [
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/select"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/r2",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/left/input/menu"
+           },
+           "to"   : {
+              "path" : "/user/hand/left/input/square",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        },
+        {
+           "from" : {
+              "path" : "/user/hand/right/input/menu"
+           },
+           "to"   : {
+              "path" : "/user/hand/right/input/cross",
+              "parameters_mode": "copy"
+           },
+           "mirror" : false
+        }
+      ]
+    }
+  ] 
+}

@@ -1,0 +1,192 @@
+{
+    "thumbnail" : "playstation_vr2_sense_left_thumbnail.png",
+    "components": {
+        "body_inner": {
+            "filename": "playstation_vr2_sense_left_body_inner.obj",
+            "component_local" : {
+            "origin": [0.00, 0.000, 0.000],
+            "rotate_xyz" : [0.0, 0.0, 0.0]
+            }
+        },
+        "body_outer": {
+            "filename": "playstation_vr2_sense_left_body_outer.obj",
+            "component_local" : {
+            "origin": [0.00, 0.000, 0.000],
+            "rotate_xyz" : [0.0, 0.0, 0.0]
+            }
+        },
+        "trigger": {
+            "filename": "playstation_vr2_sense_left_l2.obj",
+            "motion":{
+                "type":"rotate",
+                "controller_axis":1,
+                "controller_axis_component":0,
+                "trigger_path" : "/input/l2",
+                "value_mapping": [0.0,-27],
+                "pivot": [0.004028, -0.026401, 0.059902],
+                "axis": [1.0, 0.0, 0.0]
+            },
+            "component_local" : {
+            "origin": [0.005, -0.03476, 0.06637],
+            "rotate_xyz" : [315.0, 0.0, 0.0]
+            }
+        },
+        "sensor_trigger": {
+            "motion":{
+                "type":"rotate",
+                "trigger_path" : "/input/l2_sensor"
+            },
+            "component_local" : {
+            "origin": [0.005, -0.03476, 0.06637],
+            "rotate_xyz" : [315.0, 0.0, 0.0]
+            },
+            "visibility": {
+            	"default": false
+            }
+        },
+        "button_a": {
+            "filename": "playstation_vr2_sense_left_square.obj",
+            "motion":{
+                "type":"translate",
+                "pressed_path" : "/input/square/click",
+                "controller_button": 2,
+                "value_mapping": [0, 0.001],
+                "axis": [0.0, -0.7771, 0.6293]
+            },
+            "component_local" : {
+                "origin": [0.0209, 0.005339, 0.0641],
+                "rotate_xyz" : [53.0, 0.0, 7.0]
+            }
+        },
+         "button_b": {
+            "filename": "playstation_vr2_sense_left_triangle.obj",
+            "motion":{
+                "type":"translate",
+                "pressed_path" : "/input/triangle/click",
+                "controller_button": 1,
+                "value_mapping": [0, 0.001],
+                "axis": [0.0, -0.7771, 0.6293]
+            },
+            "component_local" : {
+                "origin": [0.02538, -0.002936, 0.0536],
+                "rotate_xyz" : [53.0, 0.0, 7.0]
+            }
+        },
+        "thumbstick": {
+            "filename": "playstation_vr2_sense_left_joystick.obj",
+            "motion":{
+                "type":"joystick",
+                "controller_axis": 0,
+                "center": [-0.00029, -0.014004, 0.056324],
+                "rotate_xyz": [0.0,0.0,0.0],
+                "joystick_rotation_x": [16,-16],
+                "joystick_rotation_y": [16,-16],
+                 "component_path" : "/input/left_stick",
+                "press_translate": [0.0, -0.0007771, 0.0006293]
+            },
+            "component_local" : {
+                "origin": [-0.00029, -0.001374, 0.046096],
+                "rotate_xyz" : [53.0, 0.0, 7.0]
+            }
+        },
+        "button_grip": {
+            "filename": "playstation_vr2_sense_left_l1.obj",
+            "motion":{
+                "type":"translate",
+		          "trigger_path" : "/input/l1",
+                "controller_axis":2,
+                "controller_axis_component":0,
+                "controller_button": 4,
+                "value_mapping": [0, 0.001],    
+                "axis": [-1.0, 0.0, 0.0]
+            },
+            "component_local" : {
+                "origin": [0.016141, -0.013430, 0.092056],
+                "rotate_xyz" : [0.0, 83.0, 7.0]
+            }
+        },
+        "sensor_grip": {
+            "motion":{
+                "type":"translate",
+		          "trigger_path" : "/input/l1_sensor"
+            },
+            "component_local" : {
+                "origin": [0.016141, -0.013430, 0.092056],
+                "rotate_xyz" : [0.0, 83.0, 7.0]
+            },
+            "visibility": {
+            	"default": false
+            }
+        },
+        "button_enter": {
+            "filename": "playstation_vr2_sense_left_ps.obj",
+            "motion":{
+                "type":"translate",
+                "pressed_path" : "/input/left_ps/click",
+                "controller_button": 0,
+                "value_mapping": [0, 0.001],
+                "axis": [0.0, -0.7771, 0.6293]
+            },
+            "component_local" : {
+                "origin": [0.000697, 0.006458, 0.066598],
+                "rotate_xyz" : [53.0, 0.0, 7.0]
+            }
+        },
+        "button_option": {
+            "filename": "playstation_vr2_sense_left_create.obj",
+            "motion":{
+                "type":"translate",
+                "pressed_path" : "/input/create/click",
+                "controller_button": 3,
+                "value_mapping": [0, 0.001],
+                "axis": [0.0, -0.7771, 0.6293]
+            },
+            "component_local" : {
+                "origin": [-0.019321, -0.008444, 0.046661],
+                "rotate_xyz" : [53.0, 0.0, 7.0]
+            }
+        },
+        "base": {
+            "component_local" : {
+                "origin": [-0.0034, -0.0034, 0.1491],
+                "rotate_xyz" : [-0.4, 180.0,0.0]
+            }
+        },
+        "handgrip": {
+            "component_local" : {
+                "origin": [0.0, 0.003, 0.097],
+                "rotate_xyz" : [5.037,0.0,0.0]
+             }
+        },
+        "tip": {
+            "component_local" : {
+                "origin": [0.016694, -0.02522 ,0.024687],
+                "rotate_xyz" : [-37.4, 0.0, 0.0]
+            }
+        },
+        "grip": {
+            "component_local" : {
+                "origin": [0.0, 0.003, 0.097],
+                "rotate_xyz" : [5.037,0.0,0.0]
+             }
+        },
+        "openxr_aim": {
+            "component_local" : {
+                "origin": [0.007, -0.03894766, 0.00949694],
+                "rotate_xyz" : [-39.4, 0.0, 0.0]
+             }
+        },
+        "openxr_grip": {
+            "component_local" : {
+                "origin": [0.007, -0.00182941, 0.1019482],
+                "rotate_xyz" : [20.6, 0.0, 0.0]
+            }
+        },
+        "openxr_handmodel": {
+            "component_local" : {
+                "origin": [-0.01125, -0.00182941, 0.1019482],
+                "rotate_xyz" : [-39.4, 0.0, 0.0]
+            }
+        }
+    }
+}
