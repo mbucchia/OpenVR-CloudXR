@@ -132,7 +132,7 @@ namespace {
             /* thumbrestPath */ {"/input/thumbrest", "/input/thumbrest"},
             /* button1Path */ {"/input/y", "/input/b"},
             /* button2Path */ {"/input/x", "/input/a"},
-            /* menuPath */ "/input/menu",
+            /* menuPath */ "/input/system",
         },
     };
     // clang-format on
