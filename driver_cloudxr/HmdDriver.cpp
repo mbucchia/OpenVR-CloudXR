@@ -1090,7 +1090,6 @@ namespace {
             XrTime now = 0;
             CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
             const float vsyncToPhotonsTime = (m_frameState.predictedDisplayTime - now) / 1e9f;
-            // TODO: These values are all over the place.
             vr::VRProperties()->SetFloatProperty(
                 container, vr::Prop_SecondsFromVsyncToPhotons_Float, vsyncToPhotonsTime);
             m_vsyncToPhotonsTime = vsyncToPhotonsTime;
@@ -1099,7 +1098,7 @@ namespace {
             if (refreshRate >= 58.f && std::abs(m_refreshRate - refreshRate) > 1.0001f) {
                 // TODO: These values are all over the place.
                 // DriverLog("Detected refresh rate: %u Hz", (uint32_t)std::round(refreshRate));
-                vr::VRProperties()->SetFloatProperty(container, vr::Prop_DisplayFrequency_Float, refreshRate);
+                //vr::VRProperties()->SetFloatProperty(container, vr::Prop_DisplayFrequency_Float, refreshRate);
             }
             m_refreshRate = refreshRate;
 
