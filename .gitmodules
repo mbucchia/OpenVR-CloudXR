@@ -10,3 +10,6 @@
 [submodule "external/cloudxr"]
 	path = external/cloudxr
 	url = https://github.com/mbucchia/CloudXR-SDK.git
+[submodule "external/directx11_hellovr"]
+	path = hellovr
+	url = https://github.com/mbucchia/directx11_hellovr.git

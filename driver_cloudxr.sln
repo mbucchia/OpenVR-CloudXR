@@ -40,6 +40,12 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_service", "test_service\test_service.vcxproj", "{E944132B-4352-4113-AAB2-B61BC54EFEE6}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test_hellovr", "test_hellovr", "{25E68688-0147-4296-9EB1-A94A9B022387}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "DirectXTK_Desktop_2015", "hellovr\DirectXTK\DirectXTK_Desktop_2015.vcxproj", "{E0B52AE7-E160-4D32-BF3F-910B785E5A8E}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "dxHelloworld1", "hellovr\dxHelloworld1\dxHelloworld1.vcxproj", "{5BAEF92D-D7CF-43C6-BB0A-D10A963F4DF8}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -57,10 +63,19 @@ Global
 		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Debug|x64.ActiveCfg = Debug|x64
 		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Debug|x64.Build.0 = Debug|x64
 		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Release|x64.ActiveCfg = Release|x64
-		{E944132B-4352-4113-AAB2-B61BC54EFEE6}.Release|x64.Build.0 = Release|x64
+		{E0B52AE7-E160-4D32-BF3F-910B785E5A8E}.Debug|x64.ActiveCfg = Debug|x64
+		{E0B52AE7-E160-4D32-BF3F-910B785E5A8E}.Debug|x64.Build.0 = Debug|x64
+		{E0B52AE7-E160-4D32-BF3F-910B785E5A8E}.Release|x64.ActiveCfg = Release|x64
+		{5BAEF92D-D7CF-43C6-BB0A-D10A963F4DF8}.Debug|x64.ActiveCfg = Debug|x64
+		{5BAEF92D-D7CF-43C6-BB0A-D10A963F4DF8}.Debug|x64.Build.0 = Debug|x64
+		{5BAEF92D-D7CF-43C6-BB0A-D10A963F4DF8}.Release|x64.ActiveCfg = Release|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{E0B52AE7-E160-4D32-BF3F-910B785E5A8E} = {25E68688-0147-4296-9EB1-A94A9B022387}
+		{5BAEF92D-D7CF-43C6-BB0A-D10A963F4DF8} = {25E68688-0147-4296-9EB1-A94A9B022387}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {E9197C88-0CDD-4560-BF2C-A784749703CA}
