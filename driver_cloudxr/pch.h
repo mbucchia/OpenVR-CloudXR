@@ -46,6 +46,7 @@ using Microsoft::WRL::ComPtr;
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <thread>
 
 #include <openvr_driver.h>
 #include <driverlog.h>

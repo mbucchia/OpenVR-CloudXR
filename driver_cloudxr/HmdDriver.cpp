@@ -264,6 +264,11 @@ namespace {
                 CHECK_XRCMD(xrBeginFrame(m_session.Get(), nullptr));
             }
 
+            if (vr::VRSettings()->GetBool("driver_cloudxr", "async_tracking_updates")) {
+                m_updateThreadActive = true;
+                m_updateThread = std::thread(&HmdDriver::UpdateThread, this);
+            }
+
             m_isFirstFrame = true;
 
             TraceLoggingWriteStop(local, "HmdDriver_Activate");
@@ -274,6 +279,10 @@ namespace {
         void Deactivate() override {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_Deactivate", TLArg(m_deviceIndex, "ObjectId"));
+
+            if (m_updateThreadActive.exchange(false) && m_updateThread.joinable()) {
+                m_updateThread.join();
+            }
 
             if (m_sharedMemory) {
                 UnmapViewOfFile(m_sharedMemory);
@@ -837,6 +846,7 @@ namespace {
                 auto& projection = projections[layerIndex];
                 projection.views = m_frameLayers[layerIndex].views;
                 projection.viewCount = xr::StereoView::Count;
+                // TODO: There seems to be an alpha-blending issue with SteamVR's system layer.
                 projection.layerFlags = layerIndex > 0 ? XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT : 0;
                 projection.space = m_referenceSpace.Get();
                 layers.push_back((XrCompositionLayerBaseHeader*)&projection);
@@ -873,6 +883,8 @@ namespace {
                                       TLArg(m_frameState.predictedDisplayPeriod, "PredictedDisplayPeriod"));
             }
 
+            const bool useUpdateThread = m_updateThread.joinable();
+
             const float runningStart =
                 std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "running_start"), 0.f, 1.f);
             vr::VRServerDriverHost()->VsyncEvent(runningStart * m_frameState.predictedDisplayPeriod / 1e9f);
@@ -886,49 +898,54 @@ namespace {
             }
 
             // Update HMD, controllers, and eye tracking.
+            if (!useUpdateThread) {
+                LARGE_INTEGER nowQpc = {};
+                QueryPerformanceCounter(&nowQpc);
+                XrTime now = 0;
+                CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
+
+                const float headPredictionBlending =
+                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "head_prediction_blend"), -1.f, 1.f);
+                const float controllerPredictionBlending =
+                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "controller_prediction_blend"), -1.f, 1.f);
+
+                const auto applyPredictionBlending = [&](float blending) {
+                    if (blending >= 0) {
+                        return (XrTime)(now + blending * std::max(m_frameState.predictedDisplayTime - now, 0ll));
+                    }
+                    return (XrTime)(now + blending * m_frameState.predictedDisplayPeriod);
+                };
+
+                const XrTime timeForHeadTracking = applyPredictionBlending(headPredictionBlending);
+                const XrTime timeForControllerTracking = applyPredictionBlending(controllerPredictionBlending);
+
+                UpdateTrackingState(timeForHeadTracking);
+                for (uint32_t side = 0; side < 2; side++) {
+                    m_controllerDriver[side]->UpdateTrackingState(timeForControllerTracking);
+                    if (m_handDriver[side]) {
+                        m_handDriver[side]->UpdateTrackingState(timeForControllerTracking);
+                    }
+                }
+                if (m_hasEyeTracking) {
+                    // Always use predicted display time for eye tracking.
+                    UpdateEyeTrackingState(m_frameState.predictedDisplayTime);
+                }
+            }
+
+            // Update inputs (buttons, etc).
             {
                 XrActionsSyncInfo syncInfo{XR_TYPE_ACTIONS_SYNC_INFO};
                 const XrActiveActionSet activeActionSet{m_actionSet.Get(), XR_NULL_PATH};
                 syncInfo.activeActionSets = &activeActionSet;
                 syncInfo.countActiveActionSets = 1;
                 CHECK_XRCMD(xrSyncActions(m_session.Get(), &syncInfo));
-            }
 
-            LARGE_INTEGER nowQpc = {};
-            QueryPerformanceCounter(&nowQpc);
-            XrTime now = 0;
-            CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
-
-            const float headPredictionBlending =
-                std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "head_prediction_blend"), -1.f, 1.f);
-            const float controllerPredictionBlending =
-                std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "controller_prediction_blend"), -1.f, 1.f);
-
-            const auto applyPredictionBlending = [&](float blending) {
-                if (blending >= 0) {
-                    return (XrTime)(now + blending * std::max(m_frameState.predictedDisplayTime - now, 0ll));
+                for (uint32_t side = 0; side < 2; side++) {
+                    m_controllerDriver[side]->UpdateInputsState(m_frameState.predictedDisplayTime);
+                    if (m_handDriver[side]) {
+                        m_handDriver[side]->UpdateInputsState(m_frameState.predictedDisplayTime);
+                    }
                 }
-                return (XrTime)(now + blending * m_frameState.predictedDisplayPeriod);
-            };
-
-            const XrTime timeForHeadtracking = applyPredictionBlending(headPredictionBlending);
-            const XrTime timeForControllertracking = applyPredictionBlending(headPredictionBlending);
-
-            // TODO: Implement pose refinement in a separate thread?
-            // Unclear if/when CloudXR gets refinement streamed back from the device.
-            UpdateTrackingState(timeForHeadtracking);
-            for (uint32_t side = 0; side < 2; side++) {
-                m_controllerDriver[side]->UpdateTrackingState(timeForControllertracking);
-                m_controllerDriver[side]->UpdateInputsState(m_frameState.predictedDisplayTime);
-                if (m_handDriver[side]) {
-                    m_handDriver[side]->UpdateTrackingState(timeForControllertracking);
-                    m_handDriver[side]->UpdateInputsState(m_frameState.predictedDisplayTime);
-                }
-            }
-
-            if (m_hasEyeTracking) {
-                // Always use predicted display time for eye tracking.
-                UpdateEyeTrackingState(m_frameState.predictedDisplayTime);
             }
 
             TraceLoggingWriteStop(local, "HmdDriver_PostPresent");
@@ -1225,6 +1242,47 @@ namespace {
         }
 
       private:
+        void UpdateThread() {
+            TraceLocalActivity(local);
+            TraceLoggingWriteStart(local, "HmdDriver_UpdateThread", TLArg(m_deviceIndex, "ObjectId"));
+
+            SetThreadDescription(GetCurrentThread(), L"HmdDriver_UpdateThread");
+            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
+
+            const auto updatePeriodMs = vr::VRSettings()->GetInt32("driver_cloudxr", "async_update_period");
+            DriverLog("Using asynchronous tracking updates with %dms period", updatePeriodMs);
+
+            wil::unique_handle timer;
+            *timer.put() = CreateWaitableTimer(nullptr, FALSE, nullptr);
+            LARGE_INTEGER noDelay = {};
+            SetWaitableTimer(timer.get(), &noDelay, updatePeriodMs, nullptr, nullptr, TRUE);
+
+            while (m_updateThreadActive) {
+                const bool waited = WaitForSingleObject(timer.get(), 100) == WAIT_OBJECT_0;
+
+                LARGE_INTEGER nowQpc = {};
+                QueryPerformanceCounter(&nowQpc);
+                XrTime now = 0;
+                CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
+
+                TraceLoggingWriteTagged(local, "HmdDriver_UpdateThread", TLArg(waited, "Waited"), TLArg(now, "Now"));
+
+                // Update HMD, controllers, and eye tracking.
+                UpdateTrackingState(now);
+                for (uint32_t side = 0; side < 2; side++) {
+                    m_controllerDriver[side]->UpdateTrackingState(now);
+                    if (m_handDriver[side]) {
+                        m_handDriver[side]->UpdateTrackingState(now);
+                    }
+                }
+                if (m_hasEyeTracking) {
+                    UpdateEyeTrackingState(now);
+                }
+            }
+
+            TraceLoggingWriteStop(local, "HmdDriver_UpdateThread");
+        }
+
         void InitializeSession() {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_InitializeSession", TLArg(m_deviceIndex, "ObjectId"));
@@ -1502,6 +1560,8 @@ namespace {
         bool m_inClickEvent = false;
         PROCESS_INFORMATION m_clientProcessInfo = {};
 
+        std::atomic_bool m_updateThreadActive;
+        std::thread m_updateThread;
         bool m_isFirstFrame = true;
     };
 

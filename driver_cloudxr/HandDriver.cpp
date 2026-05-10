@@ -174,6 +174,8 @@ namespace {
                     xrCreateHandTrackerEXT(m_session.Get(), &createInfo, m_handTracker.Put(xrDestroyHandTrackerEXT)));
             }
 
+            m_ready = true;
+
             TraceLoggingWriteStop(local, "HandDriver_Activate");
 
             return vr::VRInitError_None;
@@ -184,6 +186,7 @@ namespace {
             TraceLoggingWriteStart(local, "HandDriver_Deactivate", TLArg(m_deviceIndex, "ObjectId"));
 
             m_deviceIndex = vr::k_unTrackedDeviceIndexInvalid;
+            m_ready = false;
 
             TraceLoggingWriteStop(local, "HandDriver_Deactivate");
         }
@@ -289,7 +292,7 @@ namespace {
                                    TLArg(m_role == vr::TrackedControllerRole_LeftHand ? "Left" : "Right", "Role"),
                                    TLArg(time, "Time"));
 
-            if (m_deviceIndex != vr::k_unTrackedDeviceIndexInvalid) {
+            if (m_ready) {
                 vr::DriverPose_t pose = {};
                 pose.qWorldFromDriverRotation.w = pose.qDriverFromHeadRotation.w = pose.qRotation.w = 1.0;
 
@@ -518,7 +521,7 @@ namespace {
                                    TLArg(isLeft ? "Left" : "Right", "Role"),
                                    TLArg(time, "Time"));
 
-            if (m_deviceIndex != vr::k_unTrackedDeviceIndexInvalid) {
+            if (m_ready) {
                 const vr::PropertyContainerHandle_t container =
                     vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
 
@@ -560,6 +563,8 @@ namespace {
         vr::VRInputComponentHandle_t m_components[ComponentCount] = {};
 
         std::string m_serialNumber;
+
+        bool m_ready = false;
 
         xr::HandTrackerHandle m_handTracker;
         xr::ActionHandle m_actions[ComponentCount];

@@ -73,7 +73,7 @@ BEGIN
             VALUE "OriginalFilename", "driver_cloudxr.dll"
             VALUE "ProductName", "CloudXR SteamVR driver"
             VALUE "ProductVersion", "0.1.0.0"
-            VALUE "FileDescription", "a5c629a13575da68844e96f835f645d705057b85"
+            VALUE "FileDescription", "bdb85cbaf0608072581ffb8a7a4dabbb908b9e5c"
         END
     END
     BLOCK "VarFileInfo"

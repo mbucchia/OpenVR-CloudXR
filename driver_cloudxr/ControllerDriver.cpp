@@ -373,6 +373,8 @@ namespace {
             }
             vr::VRDriverInput()->CreateHapticComponent(container, "/output/haptic", &m_components[ComponentHaptics]);
 
+            m_ready = true;
+
             TraceLoggingWriteStop(local, "ControllerDriver_Activate");
 
             return vr::VRInitError_None;
@@ -383,6 +385,7 @@ namespace {
             TraceLoggingWriteStart(local, "ControllerDriver_Deactivate", TLArg(m_deviceIndex, "ObjectId"));
 
             m_deviceIndex = vr::k_unTrackedDeviceIndexInvalid;
+            m_ready = false;
 
             TraceLoggingWriteStop(local, "ControllerDriver_Deactivate");
         }
@@ -536,7 +539,7 @@ namespace {
                                    TLArg(data.fFrequency, "Frequency"),
                                    TLArg(data.fDurationSeconds, "Duration"));
 
-            if (m_deviceIndex != vr::k_unTrackedDeviceIndexInvalid) {
+            if (m_ready) {
                 XrHapticActionInfo info = {XR_TYPE_HAPTIC_ACTION_INFO};
                 info.action = m_actions[ComponentHaptics].Get();
                 XrHapticVibration vibration = {XR_TYPE_HAPTIC_VIBRATION};
@@ -576,7 +579,7 @@ namespace {
                                    TLArg(m_role == vr::TrackedControllerRole_LeftHand ? "Left" : "Right", "Role"),
                                    TLArg(time, "Time"));
 
-            if (m_deviceIndex != vr::k_unTrackedDeviceIndexInvalid) {
+            if (m_ready) {
                 vr::DriverPose_t pose = {};
                 pose.qWorldFromDriverRotation.w = pose.qDriverFromHeadRotation.w = pose.qRotation.w = 1.0;
 
@@ -664,7 +667,7 @@ namespace {
                                    TLArg(isLeft ? "Left" : "Right", "Role"),
                                    TLArg(time, "Time"));
 
-            if (m_deviceIndex != vr::k_unTrackedDeviceIndexInvalid) {
+            if (m_ready) {
                 const vr::PropertyContainerHandle_t container =
                     vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
 
@@ -723,6 +726,8 @@ namespace {
         vr::VRInputComponentHandle_t m_components[ComponentCount] = {};
 
         std::string m_serialNumber;
+
+        bool m_ready = false;
 
         XrPath m_sidePath = XR_NULL_PATH;
         xr::ActionHandle m_actions[ComponentCount];
