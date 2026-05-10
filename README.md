@@ -42,8 +42,7 @@ to offer SteamVR support.
 
 1. After you build the Visual Studio solution, the driver is located under `bin\distribution`.
 
-1. Register the driver with SteamVR by invoking (as regular user) the driver with
-   `bin\distribution\Register-Driver.bat`.
+1. Register the driver with SteamVR by invoking (as regular user) the script `bin\distribution\Register-Driver.bat`.
 
 ### Setting up a CloudXR client
 

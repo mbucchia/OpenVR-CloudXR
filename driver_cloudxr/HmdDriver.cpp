@@ -118,6 +118,9 @@ namespace {
 
             vr::VRProperties()->SetBoolProperty(container, vr::Prop_IsOnDesktop_Bool, false);
 
+            const auto adapterLuid = (((uint64_t)m_adapterLuid.HighPart) << 32) | m_adapterLuid.LowPart;
+            vr::VRProperties()->SetUint64Property(container, vr::Prop_GraphicsAdapterLuid_Uint64, adapterLuid);
+
             // We control vsync from our PostPresent() method.
             vr::VRProperties()->SetBoolProperty(container, vr::Prop_DriverDirectModeSendsVsyncEvents_Bool, true);
 
@@ -1077,7 +1080,7 @@ namespace {
             const float refreshRate = 1e9f / m_frameState.predictedDisplayPeriod;
             if (refreshRate >= 58.f && std::abs(m_refreshRate - refreshRate) > 1.0001f) {
                 // TODO: These values are all over the place.
-                //DriverLog("Detected refresh rate: %u Hz", (uint32_t)std::round(refreshRate));
+                // DriverLog("Detected refresh rate: %u Hz", (uint32_t)std::round(refreshRate));
                 vr::VRProperties()->SetFloatProperty(container, vr::Prop_DisplayFrequency_Float, refreshRate);
             }
             m_refreshRate = refreshRate;
@@ -1255,6 +1258,7 @@ namespace {
                 XrGraphicsRequirementsD3D12KHR graphicsRequirements = {XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR};
                 CHECK_XRCMD(xrGetD3D12GraphicsRequirementsKHR(m_instance.Get(), m_system.Id, &graphicsRequirements));
 
+                m_adapterLuid = graphicsRequirements.adapterLuid;
                 CHECK_HRCMD(D3D12CreateDevice(getAdapterByLuid(graphicsRequirements.adapterLuid).Get(),
                                               graphicsRequirements.minFeatureLevel,
                                               IID_PPV_ARGS(m_d3d12Device.ReleaseAndGetAddressOf())));
@@ -1470,6 +1474,7 @@ namespace {
         xr::ExtensionContext& m_extensions;
         sample::SystemContext& m_system;
         xr::SessionHandle m_session;
+        LUID m_adapterLuid = {};
         ComPtr<ID3D11Device1> m_d3d11Device;
         ComPtr<ID3D11DeviceContext> m_d3d11Context;
         ComPtr<ID3D12Device> m_d3d12Device;
