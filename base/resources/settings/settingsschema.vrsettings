@@ -121,7 +121,7 @@
         }
       },
       {
-        "name": "/settings/driver_cloudxr/cloudxr_foveation_settings",
+        "name": "/settings/driver_cloudxr/cloudxr_streaming_settings",
         "control": "toggle",
         "label": "CloudXR Video Streaming Settings",
         "advanced_only": true,
@@ -144,27 +144,56 @@
         "requires_restart": true,
         "requires": {
           "/settings/driver_cloudxr/start_cloudxr_service": true,
-          "/settings/driver_cloudxr/cloudxr_foveation_settings": true
+          "/settings/driver_cloudxr/cloudxr_streaming_settings": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_video_buffering",
+        "control": "toggle",
+        "label": "CloudXR Video Buffering",
+        "advanced_only": true,
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true,
+          "/settings/driver_cloudxr/cloudxr_streaming_settings": true
         }
       },
       {
         "name": "/settings/driver_cloudxr/cloudxr_use_10_bits",
         "control": "toggle",
         "label": "CloudXR 10-bit Streaming",
+        "advanced_only": true,
         "requires_restart": true,
         "requires": {
           "/settings/driver_cloudxr/start_cloudxr_service": true,
-          "/settings/driver_cloudxr/cloudxr_foveation_settings": true
+          "/settings/driver_cloudxr/cloudxr_streaming_settings": true
         }
       },
       {
         "name": "/settings/driver_cloudxr/cloudxr_foveation_enable",
         "control": "toggle",
         "label": "CloudXR Foveated Streaming",
+        "advanced_only": true,
         "requires_restart": true,
         "requires": {
           "/settings/driver_cloudxr/start_cloudxr_service": true,
-          "/settings/driver_cloudxr/cloudxr_foveation_settings": true
+          "/settings/driver_cloudxr/cloudxr_streaming_settings": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/cloudxr_foveation_inset",
+        "control": "slider",
+        "type": "int",
+        "label": "CloudXR Foveated Inset Size",
+        "advanced_only": true,
+        "min": 10,
+        "max": 90,
+        "step": 1,
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/start_cloudxr_service": true,
+          "/settings/driver_cloudxr/cloudxr_streaming_settings": true,
+          "/settings/driver_cloudxr/cloudxr_foveation_enable": true
         }
       },
       {
@@ -174,7 +203,7 @@
       {
         "name": "/settings/driver_cloudxr/prefer_d3d12",
         "control": "toggle",
-        "label": "Prefer Direct3D 12 Backend",
+        "label": "Prefer Direct3D 12 Backend (Unstable)",
         "advanced_only": true,
         "on_label": "Yes",
         "off_label": "No",

@@ -422,13 +422,16 @@ namespace {
             CHECK_CXRCMD(nv_cxr_service_create(&m_service));
 
             const auto setStringProperty = [&](const std::string& property, const std::string& value) {
+                DriverLog("Setting '%s' = '%s'", property.c_str(), value.c_str());
                 CHECK_CXRCMD(nv_cxr_service_set_string_property(
                     m_service, property.c_str(), property.size(), value.c_str(), value.size()));
             };
             const auto setBooleanProperty = [&](const std::string& property, const bool value) {
+                DriverLog("Setting '%s' = %s", property.c_str(), value ? "true" : "false");
                 CHECK_CXRCMD(nv_cxr_service_set_boolean_property(m_service, property.c_str(), property.size(), value));
             };
             const auto setInt64Property = [&](const std::string& property, const int64_t value) {
+                DriverLog("Setting '%s' = %d", property.c_str(), value);
                 CHECK_CXRCMD(nv_cxr_service_set_int64_property(m_service, property.c_str(), property.size(), value));
             };
 
@@ -437,13 +440,17 @@ namespace {
             setStringProperty("device-profile", buffer);
             setBooleanProperty("disable-alpha", true);
             setBooleanProperty("audio-streaming", vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_audio_enable"));
-            if (vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_foveation_settings")) {
+            if (vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_streaming_settings")) {
+                setBooleanProperty("immediate-compositor",
+                                   !vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_video_buffering"));
                 setInt64Property("runtime-foveation-warped-width",
                                  vr::VRSettings()->GetInt32("driver_cloudxr", "cloudxr_foveation_warped_width"));
                 setInt64Property("streaming-bits-per-channel",
                                  vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_use_10_bits") ? 10 : 8);
                 setBooleanProperty("runtime-foveation",
                                    vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_foveation_enable"));
+                setInt64Property("runtime-foveation-inset",
+                                 vr::VRSettings()->GetInt32("driver_cloudxr", "cloudxr_foveation_inset"));
             }
 
             CHECK_CXRCMD(nv_cxr_service_start(m_service));

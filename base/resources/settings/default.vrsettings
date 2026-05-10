@@ -12,10 +12,12 @@
     "start_cloudxr_service": false,
     "cloudxr_profile": "auto-native",
     "cloudxr_audio_enable": true,
-    "cloudxr_foveation_settings": false,
+    "cloudxr_streaming_settings": false,
     "cloudxr_foveation_warped_width": 2048,
+    "cloudxr_video_buffering": true,
     "cloudxr_use_10_bits": false,
     "cloudxr_foveation_enable": true,
+    "cloudxr_foveation_inset": 40,
     "prefer_d3d12": false
   }
 }
