@@ -1,6 +1,7 @@
 // Microsoft Visual C++ generated resource script.
 //
 #include "resource.h"
+#include "commit.h"
 
 #define APSTUDIO_READONLY_SYMBOLS
 /////////////////////////////////////////////////////////////////////////////
@@ -73,7 +74,7 @@ BEGIN
             VALUE "OriginalFilename", "driver_cloudxr.dll"
             VALUE "ProductName", "CloudXR SteamVR driver"
             VALUE "ProductVersion", "0.1.0.0"
-            VALUE "FileDescription", "480ad88699a995751aa44714903993725a6a5361"
+            VALUE "FileDescription", DRIVER_COMMIT_HASH
         END
     END
     BLOCK "VarFileInfo"

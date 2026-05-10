@@ -86,7 +86,8 @@ for /f "delims== tokens=1,2" %%G in ($(SolutionDir)\version.info) do set %%G=%%H
 ..\utils\sed.exe -i "s/VALUE \"ProductVersion\", \".*\"$/VALUE \"ProductVersion\", \"%major%.%minor%.%patch%.0\"/g" $(ProjectDir)\resource.rc
 :skip_version
 for /f "tokens=* USEBACKQ" %%F in (`git rev-parse HEAD`) do set commit=%%F
-echo const char* DriverCommitHash = "%commit%"; &gt; $(IntDir)\commit.h
+echo #define DRIVER_COMMIT_HASH "%commit%"; &gt; $(IntDir)\commit.h
+echo const char* DriverCommitHash = "%commit%"; &gt;&gt; $(IntDir)\commit.h
 ..\utils\sed.exe -i "s/VALUE \"FileDescription\", \".*\"$/VALUE \"FileDescription\", \"%commit%\"/g" $(ProjectDir)\resource.rc
 </Command>
     </PreBuildEvent>
@@ -132,7 +133,8 @@ for /f "delims== tokens=1,2" %%G in ($(SolutionDir)\version.info) do set %%G=%%H
 ..\utils\sed.exe -i "s/VALUE \"ProductVersion\", \".*\"$/VALUE \"ProductVersion\", \"%major%.%minor%.%patch%.0\"/g" $(ProjectDir)\resource.rc
 :skip_version
 for /f "tokens=* USEBACKQ" %%F in (`git rev-parse HEAD`) do set commit=%%F
-echo const char* DriverCommitHash = "%commit%"; &gt; $(IntDir)\commit.h
+echo #define DRIVER_COMMIT_HASH "%commit%"; &gt; $(IntDir)\commit.h
+echo const char* DriverCommitHash = "%commit%"; &gt;&gt; $(IntDir)\commit.h
 ..\utils\sed.exe -i "s/VALUE \"FileDescription\", \".*\"$/VALUE \"FileDescription\", \"%commit%\"/g" $(ProjectDir)\resource.rc
 </Command>
     </PreBuildEvent>
@@ -178,7 +180,10 @@ echo const char* DriverCommitHash = "%commit%"; &gt; $(IntDir)\commit.h
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ResourceCompile Include="resource.rc" />
+    <ResourceCompile Include="resource.rc">
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(IntDir)</AdditionalIncludeDirectories>
+      <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(IntDir)</AdditionalIncludeDirectories>
+    </ResourceCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />
