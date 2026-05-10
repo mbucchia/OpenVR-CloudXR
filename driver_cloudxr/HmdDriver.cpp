@@ -899,9 +899,9 @@ namespace {
             XrTime now = 0;
             CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
 
-            const bool headPredictionBlending =
+            const float headPredictionBlending =
                 std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "head_prediction_blend"), -1.f, 1.f);
-            const bool controllerPredictionBlending =
+            const float controllerPredictionBlending =
                 std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "controller_prediction_blend"), -1.f, 1.f);
 
             const auto applyPredictionBlending = [&](float blending) {
@@ -1073,6 +1073,7 @@ namespace {
             XrTime now = 0;
             CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
             const float vsyncToPhotonsTime = (m_frameState.predictedDisplayTime - now) / 1e9f;
+            // TODO: These values are all over the place.
             vr::VRProperties()->SetFloatProperty(
                 container, vr::Prop_SecondsFromVsyncToPhotons_Float, vsyncToPhotonsTime);
             m_vsyncToPhotonsTime = vsyncToPhotonsTime;
