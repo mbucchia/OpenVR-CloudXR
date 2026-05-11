@@ -2,20 +2,20 @@
   "jsonid": "input_profile",
   "controller_type": "playstation_vr2_sense",
   "device_class" : "TrackedDeviceClass_Controller",
-  "resource_root" : "playstation_vr2",
-  "driver_name" : "playstation_vr2",
-  "legacy_binding" : "{playstation_vr2}/input/legacy_binding_playstation_vr2_sense_controller.json",
-  "remapping" : "{playstation_vr2}/input/playstation_vr2_sense_controller_remapping.json",
+  "resource_root" : "cloudxr",
+  "driver_name" : "cloudxr",
+  "legacy_binding" : "{cloudxr}/input/legacy_binding_playstation_vr2_sense_controller.json",
+  "remapping" : "{cloudxr}/input/playstation_vr2_sense_controller_remapping.json",
   "input_bindingui_mode" : "controller_handed",
   "should_show_binding_errors" :  true,
   "compatibility_mode_controller_type": "oculus_touch",
   "input_bindingui_left" :
   {
-    "image": "{playstation_vr2}/icons/playstation_vr2_sense_left.svg"
+    "image": "{cloudxr}/icons/playstation_vr2_sense_left.svg"
   },
   "input_bindingui_right" :
   {
-    "image": "{playstation_vr2}/icons/playstation_vr2_sense_right.svg"
+    "image": "{cloudxr}/icons/playstation_vr2_sense_right.svg"
   },
   "mirror_mappings" :
   [
