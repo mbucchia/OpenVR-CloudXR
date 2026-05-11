@@ -190,15 +190,14 @@ namespace {
 
             ApplySettingsChanges();
 
-            // TODO: Better icons would be appreciated.
             // clang-format off
-            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceOff_String, "{oculus}/icons/quest_headset_off.png");
-            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceSearching_String, "{oculus}/icons/quest_headset_searching.png");
-            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceSearchingAlert_String, "{oculus}/icons/quest_headset_alert_searching.png");
-            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceReady_String, "{oculus}/icons/quest_headset_ready.png");
-            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceReadyAlert_String, "{oculus}/icons/quest_headset_ready_alert.png");
-            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceNotReady_String, "{oculus}/icons/quest_headset_error.png");
-            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceStandby_String, "{oculus}/icons/quest_headset_standby.png");
+            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceOff_String, "{cloudxr}/icons/cxr_off.png");
+            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceSearching_String, "{cloudxr}/icons/cxr_searching.png");
+            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceSearchingAlert_String, "{cloudxr}/icons/cxr_searching.png");
+            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceReady_String, "{cloudxr}/icons/cxr_ready.png");
+            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceReadyAlert_String, "{cloudxr}/icons/cxr_ready.png");
+            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceNotReady_String, "{cloudxr}/icons/cxr_off.png");
+            vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceStandby_String, "{cloudxr}/icons/cxr_standby.png");
             // clang-format on
 
             vr::VRProperties()->SetStringProperty(container, vr::Prop_ResourceRoot_String, "cloudxr");
