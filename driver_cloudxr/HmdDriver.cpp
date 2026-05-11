@@ -450,6 +450,17 @@ namespace {
                 // In order to be robust to the internals of the OpenXR runtime, we handle non-shareable textures.
                 D3D12_HEAP_FLAGS heapFlags;
                 CHECK_HRCMD(images[0].texture->GetHeapProperties(nullptr, &heapFlags));
+                const D3D12_RESOURCE_DESC desc = images[0].texture->GetDesc();
+                TraceLoggingWriteTagged(local,
+                                        "HmdDriver_CreateSwapTextureSet_Desc",
+                                        TLArg(desc.Width, "Width"),
+                                        TLArg(desc.Height, "Height"),
+                                        TLArg(desc.DepthOrArraySize, "ArraySize"),
+                                        TLArg(desc.MipLevels, "MipCount"),
+                                        TLArg(desc.SampleDesc.Count, "SampleCount"),
+                                        TLArg((UINT)desc.Format, "Format"),
+                                        TLArg((UINT)desc.Flags, "Flags"),
+                                        TLArg((UINT)heapFlags, "HeapFlags"));
 
                 swapset->needCopy = !(heapFlags & D3D12_HEAP_FLAG_SHARED);
                 // TODO: D3D12 handles are KMT handles, unless (re)shared from D3D11 or Vulkan. how to detect that?
@@ -469,7 +480,6 @@ namespace {
                         swapset->textures12[index] = image.texture;
                     } else {
                         // Create a shareable copy of the texture.
-                        const D3D12_RESOURCE_DESC desc = images[0].texture->GetDesc();
                         D3D12_HEAP_PROPERTIES heapProperties{};
                         heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
                         heapProperties.CreationNodeMask = heapProperties.VisibleNodeMask = 1;
@@ -503,7 +513,8 @@ namespace {
                     TraceLoggingWriteTagged(local,
                                             "HmdDriver_CreateSwapTextureSet_Texture",
                                             TLPArg(handle, "Handle"),
-                                            TLArg(swapset->useNtHandles, "IsNtHandle"));
+                                            TLArg(swapset->useNtHandles, "IsNtHandle"),
+                                            TLArg(swapset->needCopy, "NeedCopy"));
                     swapset->handles[index] = handle;
                     pOutSwapTextureSet->rSharedTextureHandles[index++] = (vr::SharedTextureHandle_t)handle;
                 }
@@ -518,6 +529,19 @@ namespace {
                 // handle both types of HANDLE.
                 D3D11_TEXTURE2D_DESC desc{};
                 images[0].texture->GetDesc(&desc);
+                TraceLoggingWriteTagged(local,
+                                        "HmdDriver_CreateSwapTextureSet_Desc",
+                                        TLArg(desc.Width, "Width"),
+                                        TLArg(desc.Height, "Height"),
+                                        TLArg(desc.ArraySize, "ArraySize"),
+                                        TLArg(desc.MipLevels, "MipCount"),
+                                        TLArg(desc.SampleDesc.Count, "SampleCount"),
+                                        TLArg((UINT)desc.Format, "Format"),
+                                        TLArg((UINT)desc.Usage, "Usage"),
+                                        TLArg(desc.BindFlags, "BindFlags"),
+                                        TLArg(desc.CPUAccessFlags, "CPUAccessFlags"),
+                                        TLArg(desc.MiscFlags, "MiscFlags"));
+
                 // TODO: Fix the logic around keyed mutexes to avoid a texture copy.
 #if 0
                 swapset->useKeyedMutex = desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
@@ -569,7 +593,8 @@ namespace {
                     TraceLoggingWriteTagged(local,
                                             "HmdDriver_CreateSwapTextureSet_Texture",
                                             TLPArg(handle, "Handle"),
-                                            TLArg(swapset->useNtHandles, "IsNtHandle"));
+                                            TLArg(swapset->useNtHandles, "IsNtHandle"),
+                                            TLArg(swapset->needCopy, "NeedCopy"));
                     swapset->handles[index] = handle;
                     pOutSwapTextureSet->rSharedTextureHandles[index++] = (vr::SharedTextureHandle_t)handle;
                 }
@@ -763,21 +788,17 @@ namespace {
                                    TLPArg((HANDLE)syncTexture, "SyncTexture"));
 
             // Acquire the keyed mutex passed by the compositor to signal the end of the GPU work.
-            ComPtr<IDXGIKeyedMutex> currentSyncMutex;
-            const auto it = m_syncMutexCache.find((HANDLE)syncTexture);
-            if (it != m_syncMutexCache.cend()) {
-                currentSyncMutex = it->second;
-            } else {
-                ComPtr<ID3D11Texture2D> texture;
+            if ((HANDLE)syncTexture != m_syncTextureHandle) {
                 if (FAILED(m_d3d11Device->OpenSharedResource((HANDLE)syncTexture,
-                                                             IID_PPV_ARGS(texture.ReleaseAndGetAddressOf())))) {
-                    CHECK_HRCMD(m_d3d11Device->OpenSharedResource1((HANDLE)syncTexture,
-                                                                   IID_PPV_ARGS(texture.ReleaseAndGetAddressOf())));
+                                                             IID_PPV_ARGS(m_syncTexture.ReleaseAndGetAddressOf())))) {
+                    CHECK_HRCMD(m_d3d11Device->OpenSharedResource1(
+                        (HANDLE)syncTexture, IID_PPV_ARGS(m_syncTexture.ReleaseAndGetAddressOf())));
                 }
-
-                CHECK_HRCMD(texture->QueryInterface(IID_PPV_ARGS(currentSyncMutex.ReleaseAndGetAddressOf())));
-                m_syncMutexCache.insert_or_assign((HANDLE)syncTexture, currentSyncMutex);
+                m_syncTextureHandle = (HANDLE)syncTexture;
             }
+
+            ComPtr<IDXGIKeyedMutex> currentSyncMutex;
+            CHECK_HRCMD(m_syncTexture->QueryInterface(IID_PPV_ARGS(currentSyncMutex.ReleaseAndGetAddressOf())));
 
             HRESULT result = currentSyncMutex->AcquireSync(0, 100);
             CHECK_HRCMD(result);
@@ -791,8 +812,15 @@ namespace {
                 currentSyncMutex.Reset();
             }
 
-            // Release the keyed mutex when done.
+            // Flush and release the keyed mutex when done.
             auto guard = MakeScopeGuard([&]() {
+                if (m_d3d12Device) {
+                    m_d3d12Context->SubmitFence();
+                    m_d3d12Context->Flush();
+                } else {
+                    m_d3d11Context->Flush();
+                }
+
                 if (currentSyncMutex) {
                     CHECK_HRCMD(currentSyncMutex->ReleaseSync(0));
                     currentSyncMutex = nullptr;
@@ -1556,7 +1584,8 @@ namespace {
         std::shared_mutex m_swapsetsMutex;
         std::vector<std::unique_ptr<TextureSwapset>> m_swapsets;
 
-        std::unordered_map<HANDLE, ComPtr<IDXGIKeyedMutex>> m_syncMutexCache;
+        HANDLE m_syncTextureHandle = {};
+        ComPtr<ID3D11Texture2D> m_syncTexture;
 
         std::vector<FrameLayer> m_frameLayers;
 

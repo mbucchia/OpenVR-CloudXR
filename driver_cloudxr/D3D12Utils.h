@@ -103,10 +103,17 @@ namespace D3D12Utils {
             return CommandList.CompletedFenceValue;
         }
 
+        uint64_t SubmitFence() {
+            const auto CompletedFenceValue = ++m_CompletionFenceValue;
+            m_CommandQueue->Signal(m_CompletionFence.Get(), CompletedFenceValue);
+
+            return CompletedFenceValue;
+        }
+
         void Flush() {
             if (m_CompletionFenceValue) {
                 wil::unique_handle handle;
-                *handle.put() = CreateEventExW(nullptr, L"Destruction Fence", 0, EVENT_ALL_ACCESS);
+                *handle.put() = CreateEventExW(nullptr, L"Flush Fence", 0, EVENT_ALL_ACCESS);
                 CHECK_HRCMD(m_CompletionFence->SetEventOnCompletion(m_CompletionFenceValue, handle.get()));
                 WaitForSingleObject(handle.get(), INFINITE);
             }
@@ -132,7 +139,7 @@ namespace D3D12Utils {
         std::deque<CommandList> m_AvailableCommandList;
         std::deque<CommandList> m_PendingCommandList;
         ComPtr<ID3D12Fence> m_CompletionFence;
-        uint64_t m_CompletionFenceValue{0};
+        std::atomic<uint64_t> m_CompletionFenceValue{0};
 
         const std::wstring m_DebugName;
     };
