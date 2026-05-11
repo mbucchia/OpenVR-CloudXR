@@ -292,17 +292,7 @@ namespace {
                 m_sharedFileHandle.reset();
             }
 
-            xrEndSession(m_session.Get());
-            m_actionSet.Reset();
-            m_eyeGazeAction.Reset();
-            m_viewSpace.Reset();
-            m_referenceSpace.Reset();
-            m_eyeGazeSpace.Reset();
-            m_session.Reset();
-            m_d3d11Context.Reset();
-            m_d3d11Device.Reset();
-            m_d3d12Context.reset();
-            m_d3d12Device.Reset();
+            xrRequestExitSession(m_session.Get());
 
             m_deviceIndex = vr::k_unTrackedDeviceIndexInvalid;
 
@@ -1525,9 +1515,7 @@ namespace {
         std::shared_mutex m_poseMutex;
         vr::DriverPose_t m_latestPose = {};
 
-        std::unique_ptr<IControllerDriver> m_controllerDriver[2];
-        std::unique_ptr<IHandDriver> m_handDriver[2];
-
+        // Reminder: C++ data members are destroyed in reverse order of declaration.
         xr::InstanceHandle& m_instance;
         xr::ExtensionContext& m_extensions;
         sample::SystemContext& m_system;
@@ -1543,6 +1531,9 @@ namespace {
         xr::SpaceHandle m_viewSpace;
         xr::SpaceHandle m_referenceSpace;
         xr::SpaceHandle m_eyeGazeSpace;
+
+        std::unique_ptr<IControllerDriver> m_controllerDriver[2];
+        std::unique_ptr<IHandDriver> m_handDriver[2];
 
         XrFrameState m_frameState = {XR_TYPE_FRAME_STATE};
         XrFovf m_cachedEyeFov[xr::StereoView::Count] = {};
