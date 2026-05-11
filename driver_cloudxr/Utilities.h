@@ -144,27 +144,7 @@ namespace util {
 
 } // namespace util
 
-#define CHECK_CXRCMD(cmd) xr::detail::_CheckCxrResult(cmd, #cmd, FILE_AND_LINE)
-
 namespace xr {
-    namespace detail {
-        [[noreturn]] inline void _ThrowCxrResult(nv_cxr_result res,
-                                                 const char* originator = nullptr,
-                                                 const char* sourceLocation = nullptr) {
-            xr::detail::_Throw(_Fmt("nv_cxr_result failure [%d]", res), originator, sourceLocation);
-        }
-
-        inline nv_cxr_result _CheckCxrResult(nv_cxr_result res,
-                                             const char* originator = nullptr,
-                                             const char* sourceLocation = nullptr) {
-            if (XR_FAILED(res)) {
-                xr::detail::_ThrowCxrResult(res, originator, sourceLocation);
-            }
-
-            return res;
-        }
-    } // namespace detail
-
     static inline std::string ToString(const XrPosef& pose) {
         return xr::detail::_Fmt("p: (%.3f, %.3f, %.3f), o:(%.3f, %.3f, %.3f, %.3f)",
                                 pose.position.x,

@@ -422,10 +422,7 @@ namespace {
         std::vector<XrActionSuggestedBinding> CreateBindings(XrActionSet actionSet) override {
             TraceLocalActivity(local);
             const bool isLeft = m_role == vr::TrackedControllerRole_LeftHand;
-            TraceLoggingWriteStart(local,
-                                   "ControllerDriver_CreateBindings",
-                                   TLArg(m_deviceIndex, "ObjectId"),
-                                   TLArg(isLeft ? "Left" : "Right", "Role"));
+            TraceLoggingWriteStart(local, "ControllerDriver_CreateBindings", TLArg(isLeft ? "Left" : "Right", "Role"));
 
             const vr::PropertyContainerHandle_t container =
                 vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
@@ -579,10 +576,10 @@ namespace {
                                    TLArg(m_role == vr::TrackedControllerRole_LeftHand ? "Left" : "Right", "Role"),
                                    TLArg(time, "Time"));
 
-            if (m_ready) {
-                vr::DriverPose_t pose = {};
-                pose.qWorldFromDriverRotation.w = pose.qDriverFromHeadRotation.w = pose.qRotation.w = 1.0;
+            vr::DriverPose_t pose = {};
+            pose.qWorldFromDriverRotation.w = pose.qDriverFromHeadRotation.w = pose.qRotation.w = 1.0;
 
+            if (m_ready) {
                 // Determine connectivity based on the interaction profile reported.
                 XrInteractionProfileState state = {XR_TYPE_INTERACTION_PROFILE_STATE};
                 CHECK_XRCMD(xrGetCurrentInteractionProfile(m_session.Get(), m_sidePath, &state));
@@ -655,7 +652,8 @@ namespace {
                 vr::VRServerDriverHost()->TrackedDevicePoseUpdated(m_deviceIndex, pose, sizeof(pose));
             }
 
-            TraceLoggingWriteStop(local, "ControllerDriver_UpdateTrackingState");
+            TraceLoggingWriteStop(
+                local, "ControllerDriver_UpdateTrackingState", TLArg(pose.poseTimeOffset, "PoseTimeOffset"));
         }
 
         void UpdateInputsState(XrTime time) {
@@ -676,6 +674,10 @@ namespace {
                     info.action = m_actions[index].Get();
                     XrActionStateBoolean state = {XR_TYPE_ACTION_STATE_BOOLEAN};
                     CHECK_XRCMD(xrGetActionStateBoolean(m_session.Get(), &info, &state));
+                    TraceLoggingWriteTagged(local,
+                                            "ControllerDriver_UpdateInputs_UpdateBooleanComponent",
+                                            TLArg(!!state.isActive, "IsActive"),
+                                            TLArg(!!state.currentState, "State"));
                     vr::VRDriverInput()->UpdateBooleanComponent(m_components[index], state.currentState, 0.0);
                 };
                 const auto updateAnalog = [&](Component index) {
@@ -683,6 +685,10 @@ namespace {
                     info.action = m_actions[index].Get();
                     XrActionStateFloat state = {XR_TYPE_ACTION_STATE_FLOAT};
                     CHECK_XRCMD(xrGetActionStateFloat(m_session.Get(), &info, &state));
+                    TraceLoggingWriteTagged(local,
+                                            "ControllerDriver_UpdateInputs_UpdateScalarComponent",
+                                            TLArg(!!state.isActive, "IsActive"),
+                                            TLArg(state.currentState, "State"));
                     vr::VRDriverInput()->UpdateScalarComponent(m_components[index], state.currentState, 0.0);
                 };
 

@@ -62,9 +62,6 @@
     <ClCompile Include="HmdDriver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\external\openvr\samples\drivers\utils\driverlog\driverlog.cpp">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="ControllerDriver.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>

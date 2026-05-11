@@ -37,6 +37,7 @@ using Microsoft::WRL::ComPtr;
 #include <chrono>
 #define _USE_MATH_DEFINES
 #include <cmath>
+#include <cstdarg>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -49,7 +50,6 @@ using Microsoft::WRL::ComPtr;
 #include <thread>
 
 #include <openvr_driver.h>
-#include <driverlog.h>
 
 #include <cxrServiceAPI.h>
 
@@ -68,6 +68,7 @@ using Microsoft::WRL::ComPtr;
 #include <openxr/openxr_loader_negotiation.h>
 
 #define ENABLE_GLOBAL_XR_DISPATCH_TABLE
+#define NO_THROW_HANDLER
 #include <XrUtility/XrDispatchTable.h>
 #include <XrUtility/XrEnumerate.h>
 #include <XrUtility/XrError.h>

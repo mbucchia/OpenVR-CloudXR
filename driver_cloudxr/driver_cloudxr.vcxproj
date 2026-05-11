@@ -47,13 +47,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <OutDir>$(SolutionDir)\bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)\obj\$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
-    <ExternalIncludePath>$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\openvr\headers;$(SolutionDir)\external\openvr\samples\drivers\utils\driverlog;$(SolutionDir)\external\OpenXR-MixedReality\Shared;$(SolutionDir)\external\cloudxr\include;$(SolutionDir)\external\cJSON;$(VC_IncludePath);$(WindowsSDK_IncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\openvr\headers;$(SolutionDir)\external\OpenXR-MixedReality\Shared;$(SolutionDir)\external\cloudxr\include;$(SolutionDir)\external\cJSON;$(VC_IncludePath);$(WindowsSDK_IncludePath)</ExternalIncludePath>
     <LibraryPath>$(SolutionDir)\external\cloudxr\lib;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <OutDir>$(SolutionDir)\bin\$(Platform)\$(Configuration)\</OutDir>
     <IntDir>$(SolutionDir)\obj\$(Platform)\$(Configuration)\$(ProjectName)\</IntDir>
-    <ExternalIncludePath>$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\openvr\headers;$(SolutionDir)\external\openvr\samples\drivers\utils\driverlog;$(SolutionDir)\external\OpenXR-MixedReality\Shared;$(SolutionDir)\external\cloudxr\include;$(SolutionDir)\external\cJSON;$(VC_IncludePath);$(WindowsSDK_IncludePath)</ExternalIncludePath>
+    <ExternalIncludePath>$(SolutionDir)\external\d3dx12;$(SolutionDir)\external\openvr\headers;$(SolutionDir)\external\OpenXR-MixedReality\Shared;$(SolutionDir)\external\cloudxr\include;$(SolutionDir)\external\cJSON;$(VC_IncludePath);$(WindowsSDK_IncludePath)</ExternalIncludePath>
     <LibraryPath>$(SolutionDir)\external\cloudxr\lib;$(VC_LibraryPath_x64);$(WindowsSDK_LibraryPath_x64)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -162,10 +162,6 @@ echo const char* DriverCommitHash = "%commit%"; &gt;&gt; $(IntDir)\commit.h
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\external\cJSON\cJSON.c">
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
-      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
-    </ClCompile>
-    <ClCompile Include="..\external\openvr\samples\drivers\utils\driverlog\driverlog.cpp">
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
       <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Release|x64'">NotUsing</PrecompiledHeader>
     </ClCompile>

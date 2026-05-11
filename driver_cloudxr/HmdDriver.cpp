@@ -412,6 +412,7 @@ namespace {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local,
                                    "HmdDriver_CreateSwapTextureSet",
+                                   TLArg(m_deviceIndex, "ObjectId"),
                                    TLArg(unPid, "Pid"),
                                    TLArg(pSwapTextureSetDesc->nWidth, "Width"),
                                    TLArg(pSwapTextureSetDesc->nHeight, "Height"),
@@ -600,8 +601,10 @@ namespace {
 
         void DestroySwapTextureSet(vr::SharedTextureHandle_t sharedTextureHandle) override {
             TraceLocalActivity(local);
-            TraceLoggingWriteStart(
-                local, "HmdDriver_DestroySwapTextureSet", TLPArg((HANDLE)sharedTextureHandle, "Handle"));
+            TraceLoggingWriteStart(local,
+                                   "HmdDriver_DestroySwapTextureSet",
+                                   TLArg(m_deviceIndex, "ObjectId"),
+                                   TLPArg((HANDLE)sharedTextureHandle, "Handle"));
 
             std::unique_lock lock(m_swapsetsMutex);
             for (auto it = m_swapsets.begin(); it != m_swapsets.end(); it++) {
@@ -613,12 +616,13 @@ namespace {
                 }
             }
 
-            TraceLoggingWriteStop(local, "HmdDriver_DestroySwapTextureSet");
+            TraceLoggingWriteStop(local, "HmdDriver_DestroySwapTextureSet", TLArg(m_deviceIndex, "ObjectId"));
         }
 
         void DestroyAllSwapTextureSets(uint32_t unPid) override {
             TraceLocalActivity(local);
-            TraceLoggingWriteStart(local, "HmdDriver_DestroyAllSwapTextureSets", TLArg(unPid, "Pid"));
+            TraceLoggingWriteStart(
+                local, "HmdDriver_DestroyAllSwapTextureSets", TLArg(m_deviceIndex, "ObjectId"), TLArg(unPid, "Pid"));
 
             std::unique_lock lock(m_swapsetsMutex);
             for (auto it = m_swapsets.begin(); it != m_swapsets.end();) {
@@ -637,6 +641,7 @@ namespace {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local,
                                    "HmdDriver_GetNextSwapTextureSetIndex",
+                                   TLArg(m_deviceIndex, "ObjectId"),
                                    TLPArg((HANDLE)sharedTextureHandles[0], "Handle0"),
                                    TLPArg((HANDLE)sharedTextureHandles[1], "Handle1"));
 
@@ -778,8 +783,10 @@ namespace {
             CHECK_HRCMD(result);
 
             if (result == WAIT_TIMEOUT) {
+                TraceLoggingWriteTagged(local, "HmdDriver_Present_AcquireSyncTimedout");
                 currentSyncMutex.Reset();
             } else if (result == WAIT_ABANDONED) {
+                TraceLoggingWriteTagged(local, "HmdDriver_Present_AcquireSyncAbandoned");
                 currentSyncMutex->ReleaseSync(0);
                 currentSyncMutex.Reset();
             }
@@ -876,7 +883,10 @@ namespace {
 
             const float runningStart =
                 std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "running_start"), 0.f, 1.f);
-            vr::VRServerDriverHost()->VsyncEvent(runningStart * m_frameState.predictedDisplayPeriod / 1e9f);
+            const auto vsyncTimeOffset = runningStart * m_frameState.predictedDisplayPeriod / 1e9f;
+            TraceLoggingWriteTagged(
+                local, "HmdDriver_PostPresent_VsyncEvent", TLArg(vsyncTimeOffset, "VsyncTimeOffset"));
+            vr::VRServerDriverHost()->VsyncEvent(vsyncTimeOffset);
 
             UpdateHeadProperties(m_frameState.predictedDisplayTime);
             {
@@ -897,6 +907,12 @@ namespace {
                     std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "head_prediction_blend"), -1.f, 1.f);
                 const float controllerPredictionBlending =
                     std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "controller_prediction_blend"), -1.f, 1.f);
+
+                TraceLoggingWriteTagged(local,
+                                        "HmdDriver_PostPresent_ApplyPrediction",
+                                        TLArg(now, "Now"),
+                                        TLArg(headPredictionBlending, "HeadPredictionBlending"),
+                                        TLArg(controllerPredictionBlending, "ControllerPredictionBlending"));
 
                 const auto applyPredictionBlending = [&](float blending) {
                     if (blending >= 0) {
@@ -1087,7 +1103,7 @@ namespace {
             if (refreshRate >= 58.f && std::abs(m_refreshRate - refreshRate) > 1.0001f) {
                 // TODO: These values are all over the place.
                 // DriverLog("Detected refresh rate: %u Hz", (uint32_t)std::round(refreshRate));
-                //vr::VRProperties()->SetFloatProperty(container, vr::Prop_DisplayFrequency_Float, refreshRate);
+                // vr::VRProperties()->SetFloatProperty(container, vr::Prop_DisplayFrequency_Float, refreshRate);
             }
             m_refreshRate = refreshRate;
 
@@ -1187,7 +1203,7 @@ namespace {
             }
             vr::VRServerDriverHost()->TrackedDevicePoseUpdated(m_deviceIndex, pose, sizeof(pose));
 
-            TraceLoggingWriteStop(local, "HmdDriver_UpdateTrackingState");
+            TraceLoggingWriteStop(local, "HmdDriver_UpdateTrackingState", TLArg(pose.poseTimeOffset, "PoseTimeOffset"));
         }
 
         void UpdateEyeTrackingState(XrTime time) override {

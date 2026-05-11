@@ -30,3 +30,43 @@ TRACELOGGING_DECLARE_PROVIDER(TraceProvider);
 
 #define TLArg(var, ...) TraceLoggingValue(var, ##__VA_ARGS__)
 #define TLPArg(var, ...) TraceLoggingPointer(var, ##__VA_ARGS__)
+
+namespace {
+    void DriverLogVarArgs(const char* pMsgFormat, va_list args) {
+        char buf[1024];
+        vsnprintf_s(buf, sizeof(buf), pMsgFormat, args);
+
+        TraceLoggingWrite(TraceProvider, "DriverLog", TLArg(buf, "Message"));
+        vr::VRDriverLog()->Log(buf);
+    }
+} // namespace
+
+static inline void DriverLog(const char* pMsgFormat, ...) {
+    va_list args;
+    va_start(args, pMsgFormat);
+
+    DriverLogVarArgs(pMsgFormat, args);
+
+    va_end(args);
+}
+
+namespace xr::detail {
+    // Add new macro for CloudXR results.
+#define CHECK_CXRCMD(cmd) xr::detail::_CheckCxrResult(cmd, #cmd, FILE_AND_LINE)
+
+    [[noreturn]] inline void _ThrowCxrResult(nv_cxr_result res,
+                                             const char* originator = nullptr,
+                                             const char* sourceLocation = nullptr) {
+        xr::detail::_Throw(_Fmt("nv_cxr_result failure [%d]", res), originator, sourceLocation);
+    }
+
+    inline nv_cxr_result _CheckCxrResult(nv_cxr_result res,
+                                         const char* originator = nullptr,
+                                         const char* sourceLocation = nullptr) {
+        if (XR_FAILED(res)) {
+            xr::detail::_ThrowCxrResult(res, originator, sourceLocation);
+        }
+
+        return res;
+    }
+} // namespace xr::detail

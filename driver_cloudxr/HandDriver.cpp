@@ -223,10 +223,7 @@ namespace {
         std::vector<XrActionSuggestedBinding> CreateBindings(XrActionSet actionSet) override {
             TraceLocalActivity(local);
             const bool isLeft = m_role == vr::TrackedControllerRole_LeftHand;
-            TraceLoggingWriteStart(local,
-                                   "HandDriver_CreateBindings",
-                                   TLArg(m_deviceIndex, "ObjectId"),
-                                   TLArg(isLeft ? "Left" : "Right", "Role"));
+            TraceLoggingWriteStart(local, "HandDriver_CreateBindings", TLArg(isLeft ? "Left" : "Right", "Role"));
 
             const vr::PropertyContainerHandle_t container =
                 vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
@@ -292,10 +289,10 @@ namespace {
                                    TLArg(m_role == vr::TrackedControllerRole_LeftHand ? "Left" : "Right", "Role"),
                                    TLArg(time, "Time"));
 
-            if (m_ready) {
-                vr::DriverPose_t pose = {};
-                pose.qWorldFromDriverRotation.w = pose.qDriverFromHeadRotation.w = pose.qRotation.w = 1.0;
+            vr::DriverPose_t pose = {};
+            pose.qWorldFromDriverRotation.w = pose.qDriverFromHeadRotation.w = pose.qRotation.w = 1.0;
 
+            if (m_ready) {
                 static constexpr auto k_TrackedJoint = XR_HAND_JOINT_WRIST_EXT;
                 XrHandJointsLocateInfoEXT info = {XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
                 info.baseSpace = m_referenceSpace.Get();
@@ -509,7 +506,8 @@ namespace {
                 }
             }
 
-            TraceLoggingWriteStop(local, "HandDriver_UpdateTrackingState");
+            TraceLoggingWriteStop(
+                local, "HandDriver_UpdateTrackingState", TLArg(pose.poseTimeOffset, "PoseTimeOffset"));
         }
 
         void UpdateInputsState(XrTime time) {
@@ -531,6 +529,10 @@ namespace {
                         info.action = m_actions[index].Get();
                         XrActionStateFloat state = {XR_TYPE_ACTION_STATE_FLOAT};
                         CHECK_XRCMD(xrGetActionStateFloat(m_session.Get(), &info, &state));
+                        TraceLoggingWriteTagged(local,
+                                                "HandDriver_UpdateInputs_UpdateScalarComponent",
+                                                TLArg(!!state.isActive, "IsActive"),
+                                                TLArg(state.currentState, "State"));
                         vr::VRDriverInput()->UpdateScalarComponent(m_components[index], state.currentState, 0.0);
                     };
 

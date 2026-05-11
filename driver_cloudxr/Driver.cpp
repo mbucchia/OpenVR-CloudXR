@@ -463,6 +463,7 @@ namespace {
             TraceLoggingWriteStart(local, "Driver_StopCloudXrService");
 
             nv_cxr_service_stop(m_service);
+            // TODO: This hangs sometimes. Need a watchdog of some sort.
             nv_cxr_service_join(m_service);
             nv_cxr_service_destroy(m_service);
 
@@ -479,6 +480,20 @@ namespace {
         bool m_isLoaded = false;
     };
 } // namespace
+
+namespace xr::detail {
+    [[noreturn]] void _Throw(std::string failureMessage, const char* originator, const char* sourceLocation) {
+        if (originator != nullptr) {
+            failureMessage += xr::detail::_Fmt("\n    Origin: %s", originator);
+        }
+        if (sourceLocation != nullptr) {
+            failureMessage += xr::detail::_Fmt("\n    Source: %s", sourceLocation);
+        }
+
+        DriverLog("%s", failureMessage.c_str());
+        throw std::logic_error(failureMessage);
+    }
+} // namespace xr::detail
 
 // Entry point for vrserver.
 extern "C" __declspec(dllexport) void* HmdDriverFactory(const char* pInterfaceName, int* pReturnCode) {
