@@ -52,68 +52,6 @@
         "requires_restart": true
       },
       {
-        "name": "/settings/driver_cloudxr/async_tracking_updates",
-        "control": "toggle",
-        "label": "Update Tracking",
-        "advanced_only": true,
-        "on_label": "Asynchronous",
-        "off_label": "Synchronous",
-        "requires_restart": true
-      },
-      {
-        "name": "/settings/driver_cloudxr/head_prediction_blend",
-        "control": "slider",
-        "type": "float",
-        "label": "Head Tracking Prediction Blend",
-        "advanced_only": true,
-        "min": -1,
-        "max": 1,
-        "step": 0.05,
-        "decimals": 2,
-        "requires": {
-          "/settings/driver_cloudxr/async_tracking_updates": false
-        }
-      },
-      {
-        "name": "/settings/driver_cloudxr/controller_prediction_blend",
-        "control": "slider",
-        "type": "float",
-        "label": "Motion Controller Tracking Prediction Blend",
-        "advanced_only": true,
-        "min": -1,
-        "max": 1,
-        "step": 0.05,
-        "decimals": 2,
-        "requires": {
-          "/settings/driver_cloudxr/async_tracking_updates": false
-        }
-      },
-      {
-        "name": "/settings/driver_cloudxr/async_update_period",
-        "control": "slider",
-        "type": "int",
-        "label": "Update Period",
-        "advanced_only": true,
-        "min": 1,
-        "max": 10,
-        "step": 1,
-        "requires_restart": true,
-        "requires": {
-          "/settings/driver_cloudxr/async_tracking_updates": true
-        }
-      },
-      {
-        "name": "/settings/driver_cloudxr/running_start",
-        "control": "slider",
-        "type": "float",
-        "label": "Running Start",
-        "advanced_only": true,
-        "min": 0,
-        "max": 1,
-        "step": 0.01,
-        "decimals": 2
-      },
-      {
         "name": "/settings/driver_cloudxr/start_cloudxr_service",
         "control": "toggle",
         "label": "Start Built-in CloudXR Service",
@@ -227,6 +165,48 @@
       {
         "name": "/settings/driver_cloudxr/developer_mode",
         "type": "bool"
+      },
+      {
+        "name": "/settings/driver_cloudxr/head_prediction_blend",
+        "control": "slider",
+        "type": "float",
+        "label": "Head Tracking Prediction Blend",
+        "advanced_only": true,
+        "min": -1,
+        "max": 1,
+        "step": 0.05,
+        "decimals": 2,
+        "requires": {
+          "/settings/driver_cloudxr/developer_mode": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/controller_prediction_blend",
+        "control": "slider",
+        "type": "float",
+        "label": "Motion Controller Tracking Prediction Blend",
+        "advanced_only": true,
+        "min": -1,
+        "max": 1,
+        "step": 0.05,
+        "decimals": 2,
+        "requires": {
+          "/settings/driver_cloudxr/developer_mode": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/running_start",
+        "control": "slider",
+        "type": "float",
+        "label": "Running Start",
+        "advanced_only": true,
+        "min": 0,
+        "max": 1,
+        "step": 0.01,
+        "decimals": 2,
+        "requires": {
+          "/settings/driver_cloudxr/developer_mode": true
+        }
       }
     ]
   }

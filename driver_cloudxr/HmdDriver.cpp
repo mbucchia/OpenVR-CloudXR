@@ -262,11 +262,6 @@ namespace {
                 CHECK_XRCMD(xrBeginFrame(m_session.Get(), nullptr));
             }
 
-            if (vr::VRSettings()->GetBool("driver_cloudxr", "async_tracking_updates")) {
-                m_updateThreadActive = true;
-                m_updateThread = std::thread(&HmdDriver::UpdateThread, this);
-            }
-
             m_isFirstFrame = true;
 
             TraceLoggingWriteStop(local, "HmdDriver_Activate");
@@ -277,10 +272,6 @@ namespace {
         void Deactivate() override {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_Deactivate", TLArg(m_deviceIndex, "ObjectId"));
-
-            if (m_updateThreadActive.exchange(false) && m_updateThread.joinable()) {
-                m_updateThread.join();
-            }
 
             if (m_sharedMemory) {
                 UnmapViewOfFile(m_sharedMemory);
@@ -787,8 +778,7 @@ namespace {
             }
 
             // Update HMD, controllers, and eye tracking.
-            const bool useUpdateThread = m_updateThread.joinable();
-            if (!useUpdateThread) {
+            {
                 LARGE_INTEGER nowQpc = {};
                 QueryPerformanceCounter(&nowQpc);
                 XrTime now = 0;
@@ -1137,47 +1127,6 @@ namespace {
         }
 
       private:
-        void UpdateThread() {
-            TraceLocalActivity(local);
-            TraceLoggingWriteStart(local, "HmdDriver_UpdateThread", TLArg(m_deviceIndex, "ObjectId"));
-
-            SetThreadDescription(GetCurrentThread(), L"HmdDriver_UpdateThread");
-            SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_TIME_CRITICAL);
-
-            const auto updatePeriodMs = vr::VRSettings()->GetInt32("driver_cloudxr", "async_update_period");
-            DriverLog("Using asynchronous tracking updates with %dms period", updatePeriodMs);
-
-            wil::unique_handle timer;
-            *timer.put() = CreateWaitableTimer(nullptr, FALSE, nullptr);
-            LARGE_INTEGER noDelay = {};
-            SetWaitableTimer(timer.get(), &noDelay, updatePeriodMs, nullptr, nullptr, TRUE);
-
-            while (m_updateThreadActive) {
-                const bool waited = WaitForSingleObject(timer.get(), 100) == WAIT_OBJECT_0;
-
-                LARGE_INTEGER nowQpc = {};
-                QueryPerformanceCounter(&nowQpc);
-                XrTime now = 0;
-                CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
-
-                TraceLoggingWriteTagged(local, "HmdDriver_UpdateThread", TLArg(waited, "Waited"), TLArg(now, "Now"));
-
-                // Update HMD, controllers, and eye tracking.
-                UpdateTrackingState(now);
-                for (uint32_t side = 0; side < 2; side++) {
-                    m_controllerDriver[side]->UpdateTrackingState(now);
-                    if (m_handDriver[side]) {
-                        m_handDriver[side]->UpdateTrackingState(now);
-                    }
-                }
-                if (m_hasEyeTracking) {
-                    UpdateEyeTrackingState(now);
-                }
-            }
-
-            TraceLoggingWriteStop(local, "HmdDriver_UpdateThread");
-        }
-
         void InitializeSession() {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_InitializeSession", TLArg(m_deviceIndex, "ObjectId"));
@@ -1417,8 +1366,6 @@ namespace {
         bool m_inClickEvent = false;
         PROCESS_INFORMATION m_clientProcessInfo = {};
 
-        std::atomic_bool m_updateThreadActive;
-        std::thread m_updateThread;
         bool m_isFirstFrame = true;
     };
 
