@@ -1002,18 +1002,45 @@ namespace {
             QueryPerformanceCounter(&nowQpc);
             XrTime now = 0;
             CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
-            const float vsyncToPhotonsTime = (m_frameState.predictedDisplayTime - now) / 1e9f;
-            vr::VRProperties()->SetFloatProperty(
-                container, vr::Prop_SecondsFromVsyncToPhotons_Float, vsyncToPhotonsTime);
-            m_vsyncToPhotonsTime = vsyncToPhotonsTime;
 
-            const float refreshRate = 1e9f / m_frameState.predictedDisplayPeriod;
-            if (refreshRate >= 58.f && std::abs(m_refreshRate - refreshRate) > 1.0001f) {
-                // TODO: These values are all over the place.
-                // DriverLog("Detected refresh rate: %u Hz", (uint32_t)std::round(refreshRate));
-                // vr::VRProperties()->SetFloatProperty(container, vr::Prop_DisplayFrequency_Float, refreshRate);
+            float vsyncToPhotonsTime = (m_frameState.predictedDisplayTime - now) / 1e9f;
+            float refreshRate = 1e9f / m_frameState.predictedDisplayPeriod;
+#if 1
+            // TODO: These values are all over the place.
+            // Perform a quick heuristic to filter them out.
+            // - Ignore values below 72 Hz.
+            // - Detect by range.
+            if (refreshRate >= 71.f) {
+                if (refreshRate >= 118.f) {
+                    refreshRate = 120.f;
+                } else if (refreshRate >= 98.f) {
+                    refreshRate = 100.f;
+                } else if (refreshRate >= 94.f) {
+                    refreshRate = 96.f;
+                } else if (refreshRate >= 88.f) {
+                    refreshRate = 90.f;
+                } else if (refreshRate >= 78.f) {
+                    refreshRate = 80.f;
+                } else if (refreshRate >= 70.f) {
+                    refreshRate = 72.f;
+                }
+
+                // Conservatively assume 1 full frame.
+                vsyncToPhotonsTime = 1.f / refreshRate;
+#else
+            {
+#endif
+                if (std::abs(m_refreshRate - refreshRate) > 1.0001f) {
+                    DriverLog("Detected refresh rate: %u Hz (photon time: %.3fms)",
+                              (uint32_t)std::round(refreshRate),
+                              vsyncToPhotonsTime * 1e3f);
+                    vr::VRProperties()->SetFloatProperty(container, vr::Prop_DisplayFrequency_Float, refreshRate);
+                    m_refreshRate = refreshRate;
+                    vr::VRProperties()->SetFloatProperty(
+                        container, vr::Prop_SecondsFromVsyncToPhotons_Float, vsyncToPhotonsTime);
+                    m_vsyncToPhotonsTime = vsyncToPhotonsTime;
+                }
             }
-            m_refreshRate = refreshRate;
 
             TraceLoggingWriteTagged(local,
                                     "HmdDriver_UpdateHeadProperties",
