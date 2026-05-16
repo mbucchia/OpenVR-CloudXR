@@ -42,9 +42,6 @@
     <ClInclude Include="SharedMemory.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="D3D12Utils.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="HandDriver.h">
       <Filter>Header Files</Filter>
     </ClInclude>

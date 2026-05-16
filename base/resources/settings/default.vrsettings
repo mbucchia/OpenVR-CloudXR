@@ -19,7 +19,6 @@
     "cloudxr_video_buffering": true,
     "cloudxr_use_10_bits": false,
     "cloudxr_foveation_enable": true,
-    "cloudxr_foveation_inset": 40,
-    "prefer_d3d12": false
+    "cloudxr_foveation_inset": 40
   }
 }

@@ -37,7 +37,6 @@ namespace {
 
     const std::vector<const char*> k_RequestedExtensions = {
         XR_KHR_D3D11_ENABLE_EXTENSION_NAME,
-        XR_KHR_D3D12_ENABLE_EXTENSION_NAME,
         XR_KHR_VISIBILITY_MASK_EXTENSION_NAME,
         XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME,
         XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME,
@@ -221,8 +220,8 @@ namespace {
 
                         // Create the OpenXR instance.
                         m_extensions = xr::CreateExtensionContext(k_RequestedExtensions);
-                        if (!m_extensions.SupportsD3D11 && !m_extensions.SupportsD3D12) {
-                            throw std::runtime_error("Runtime does not support Direct3D!");
+                        if (!m_extensions.SupportsD3D11) {
+                            throw std::runtime_error("Runtime does not support Direct3D 11!");
                         }
 
                         XrInstanceCreateInfo instanceCreateInfo{XR_TYPE_INSTANCE_CREATE_INFO};

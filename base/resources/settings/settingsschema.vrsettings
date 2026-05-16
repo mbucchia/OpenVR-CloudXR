@@ -227,18 +227,6 @@
       {
         "name": "/settings/driver_cloudxr/developer_mode",
         "type": "bool"
-      },
-      {
-        "name": "/settings/driver_cloudxr/prefer_d3d12",
-        "control": "toggle",
-        "label": "Prefer Direct3D 12 Backend (Unstable)",
-        "advanced_only": true,
-        "on_label": "Yes",
-        "off_label": "No",
-        "requires_restart": true,
-        "requires": {
-          "/settings/driver_cloudxr/developer_mode": true
-        }
       }
     ]
   }

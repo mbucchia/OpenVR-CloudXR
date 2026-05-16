@@ -23,7 +23,6 @@
 #include "pch.h"
 
 #include "ControllerDriver.h"
-#include "D3D12Utils.h"
 #include "HandDriver.h"
 #include "HmdDriver.h"
 #include "SharedMemory.h"
@@ -440,186 +439,53 @@ namespace {
             uint32_t count = 0;
             CHECK_XRCMD(xrEnumerateSwapchainImages(swapset->swapchain.Get(), 0, &count, nullptr));
 
-            if (m_d3d12Device) {
-                std::vector<XrSwapchainImageD3D12KHR> images(3, {XR_TYPE_SWAPCHAIN_IMAGE_D3D12_KHR});
-                CHECK_XRCMD(xrEnumerateSwapchainImages(swapset->swapchain.Get(),
-                                                       count,
-                                                       &count,
-                                                       reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())));
+            std::vector<XrSwapchainImageD3D11KHR> images(3, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
+            CHECK_XRCMD(xrEnumerateSwapchainImages(
+                swapset->swapchain.Get(), count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())));
 
-                // In order to be robust to the internals of the OpenXR runtime, we handle non-shareable textures.
-                D3D12_HEAP_FLAGS heapFlags;
-                CHECK_HRCMD(images[0].texture->GetHeapProperties(nullptr, &heapFlags));
-                const D3D12_RESOURCE_DESC desc = images[0].texture->GetDesc();
-                TraceLoggingWriteTagged(local,
-                                        "HmdDriver_CreateSwapTextureSet_Desc",
-                                        TLArg(desc.Width, "Width"),
-                                        TLArg(desc.Height, "Height"),
-                                        TLArg(desc.DepthOrArraySize, "ArraySize"),
-                                        TLArg(desc.MipLevels, "MipCount"),
-                                        TLArg(desc.SampleDesc.Count, "SampleCount"),
-                                        TLArg((UINT)desc.Format, "Format"),
-                                        TLArg((UINT)desc.Flags, "Flags"),
-                                        TLArg((UINT)heapFlags, "HeapFlags"));
+            // CloudXR does not give us shareable textures. We will manage a copy.
 
-                swapset->needCopy = !(heapFlags & D3D12_HEAP_FLAG_SHARED);
-                // TODO: D3D12 handles are KMT handles, unless (re)shared from D3D11 or Vulkan. how to detect that?
-                swapset->useNtHandles = true;
-                pOutSwapTextureSet->unTextureFlags = !swapset->useNtHandles ? 0 : vr::VRSwapTextureFlag_Shared_NTHandle;
+            D3D11_TEXTURE2D_DESC desc{};
+            images[0].texture->GetDesc(&desc);
+            TraceLoggingWriteTagged(local,
+                                    "HmdDriver_CreateSwapTextureSet_Desc",
+                                    TLArg(desc.Width, "Width"),
+                                    TLArg(desc.Height, "Height"),
+                                    TLArg(desc.ArraySize, "ArraySize"),
+                                    TLArg(desc.MipLevels, "MipCount"),
+                                    TLArg(desc.SampleDesc.Count, "SampleCount"),
+                                    TLArg((UINT)desc.Format, "Format"),
+                                    TLArg((UINT)desc.Usage, "Usage"),
+                                    TLArg(desc.BindFlags, "BindFlags"),
+                                    TLArg(desc.CPUAccessFlags, "CPUAccessFlags"),
+                                    TLArg(desc.MiscFlags, "MiscFlags"));
 
-                if (swapset->useNtHandles) {
-                    // This may fail if the process is closing. Let it be (the handles will not be used anyway).
-                    *swapset->processHandle.put() = OpenProcess(PROCESS_ALL_ACCESS, false, unPid);
+            uint32_t index = 0;
+            for (const auto& image : images) {
+                swapset->swapchainTextures[index] = image.texture;
+
+                if (!index) {
+                    // Create a shareable copy of the texture.
+                    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+                    CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
+                        &desc, nullptr, swapset->textures[index].ReleaseAndGetAddressOf()));
+                } else {
+                    swapset->textures[index] = swapset->textures[0];
                 }
 
-                uint32_t index = 0;
-                for (const auto& image : images) {
-                    swapset->swapchainTextures12[index] = image.texture;
+                ComPtr<IDXGIResource1> resource;
+                CHECK_HRCMD(swapset->textures[index]->QueryInterface(resource.ReleaseAndGetAddressOf()));
 
-                    if (!swapset->needCopy) {
-                        swapset->textures12[index] = image.texture;
-                    } else {
-                        // Create a shareable copy of the texture.
-                        D3D12_HEAP_PROPERTIES heapProperties{};
-                        heapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
-                        heapProperties.CreationNodeMask = heapProperties.VisibleNodeMask = 1;
-                        CHECK_HRCMD(m_d3d12Device->CreateCommittedResource(
-                            &heapProperties,
-                            D3D12_HEAP_FLAG_SHARED,
-                            &desc,
-                            D3D12_RESOURCE_STATE_COMMON,
-                            nullptr,
-                            IID_PPV_ARGS(swapset->textures12[index].ReleaseAndGetAddressOf())));
-                    }
-
-                    HANDLE handle = {};
-                    if (swapset->useNtHandles) {
-                        wil::unique_handle ntHandle;
-                        CHECK_HRCMD(m_d3d12Device->CreateSharedHandle(
-                            image.texture, nullptr, GENERIC_ALL, nullptr, ntHandle.put()));
-
-                        // This may fail if the process is closing. Let it be (the handles will not be used anyway).
-                        DuplicateHandle(GetCurrentProcess(),
-                                        ntHandle.get(),
-                                        swapset->processHandle.get(),
-                                        &handle,
-                                        0,
-                                        false,
-                                        DUPLICATE_SAME_ACCESS);
-                    } else {
-                        CHECK_HRCMD(
-                            m_d3d12Device->CreateSharedHandle(image.texture, nullptr, GENERIC_ALL, nullptr, &handle));
-                    }
-                    TraceLoggingWriteTagged(local,
-                                            "HmdDriver_CreateSwapTextureSet_Texture",
-                                            TLPArg(handle, "Handle"),
-                                            TLArg(swapset->useNtHandles, "IsNtHandle"),
-                                            TLArg(swapset->needCopy, "NeedCopy"));
-                    swapset->handles[index] = handle;
-                    pOutSwapTextureSet->rSharedTextureHandles[index++] = (vr::SharedTextureHandle_t)handle;
-                }
-            } else {
-                std::vector<XrSwapchainImageD3D11KHR> images(3, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-                CHECK_XRCMD(xrEnumerateSwapchainImages(swapset->swapchain.Get(),
-                                                       count,
-                                                       &count,
-                                                       reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())));
-
-                // In order to be robust to the internals of the OpenXR runtime, we handle non-shareable textures and we
-                // handle both types of HANDLE.
-                D3D11_TEXTURE2D_DESC desc{};
-                images[0].texture->GetDesc(&desc);
-                TraceLoggingWriteTagged(local,
-                                        "HmdDriver_CreateSwapTextureSet_Desc",
-                                        TLArg(desc.Width, "Width"),
-                                        TLArg(desc.Height, "Height"),
-                                        TLArg(desc.ArraySize, "ArraySize"),
-                                        TLArg(desc.MipLevels, "MipCount"),
-                                        TLArg(desc.SampleDesc.Count, "SampleCount"),
-                                        TLArg((UINT)desc.Format, "Format"),
-                                        TLArg((UINT)desc.Usage, "Usage"),
-                                        TLArg(desc.BindFlags, "BindFlags"),
-                                        TLArg(desc.CPUAccessFlags, "CPUAccessFlags"),
-                                        TLArg(desc.MiscFlags, "MiscFlags"));
-
-                // TODO: Fix the logic around keyed mutexes to avoid a texture copy.
-#if 0
-                swapset->useKeyedMutex = desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_KEYEDMUTEX;
-#endif
-                swapset->needCopy = !(desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED) && !swapset->useKeyedMutex;
-                swapset->useNtHandles = desc.MiscFlags & D3D11_RESOURCE_MISC_SHARED_NTHANDLE;
-                pOutSwapTextureSet->unTextureFlags = !swapset->useNtHandles ? 0 : vr::VRSwapTextureFlag_Shared_NTHandle;
-                if (swapset->useNtHandles) {
-                    // This may fail if the process is closing. Let it be (the handles will not be used anyway).
-                    *swapset->processHandle.put() = OpenProcess(PROCESS_ALL_ACCESS, false, unPid);
-                }
-
-                uint32_t index = 0;
-                for (const auto& image : images) {
-                    swapset->swapchainTextures11[index] = image.texture;
-
-                    if (!swapset->needCopy) {
-                        swapset->textures11[index] = image.texture;
-                        if (swapset->useKeyedMutex) {
-                            CHECK_HRCMD(image.texture->QueryInterface(
-                                IID_PPV_ARGS(swapset->keyedMutexes[index].ReleaseAndGetAddressOf())));
-                        }
-                    } else {
-                        // Create a shareable copy of the texture.
-                        desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
-                        CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
-                            &desc, nullptr, swapset->textures11[index].ReleaseAndGetAddressOf()));
-                    }
-
-                    ComPtr<IDXGIResource1> resource;
-                    CHECK_HRCMD(swapset->textures11[index]->QueryInterface(resource.ReleaseAndGetAddressOf()));
-
-                    HANDLE handle = {};
-                    if (swapset->useNtHandles) {
-                        wil::unique_handle ntHandle;
-                        CHECK_HRCMD(resource->CreateSharedHandle(nullptr, GENERIC_ALL, nullptr, ntHandle.put()));
-
-                        // This may fail if the process is closing. Let it be (the handles will not be used anyway).
-                        DuplicateHandle(GetCurrentProcess(),
-                                        ntHandle.get(),
-                                        swapset->processHandle.get(),
-                                        &handle,
-                                        0,
-                                        false,
-                                        DUPLICATE_SAME_ACCESS);
-                    } else {
-                        CHECK_HRCMD(resource->GetSharedHandle(&handle));
-                    }
-                    TraceLoggingWriteTagged(local,
-                                            "HmdDriver_CreateSwapTextureSet_Texture",
-                                            TLPArg(handle, "Handle"),
-                                            TLArg(swapset->useNtHandles, "IsNtHandle"),
-                                            TLArg(swapset->needCopy, "NeedCopy"));
-                    swapset->handles[index] = handle;
-                    pOutSwapTextureSet->rSharedTextureHandles[index++] = (vr::SharedTextureHandle_t)handle;
-                }
-            }
-
-            if (swapset->needCopy) {
-                static bool logged = false;
-                if (!logged) {
-                    DriverLog("Runtime did not distribute swapchains with shareable properties, using slow path...");
-                }
-                logged = true;
+                HANDLE handle = {};
+                CHECK_HRCMD(resource->GetSharedHandle(&handle));
+                TraceLoggingWriteTagged(local, "HmdDriver_CreateSwapTextureSet_Texture", TLPArg(handle, "Handle"));
+                swapset->handles[index] = handle;
+                pOutSwapTextureSet->rSharedTextureHandles[index++] = (vr::SharedTextureHandle_t)handle;
             }
 
             // Acquire the first image.
-            uint32_t acquiredIndex = 0;
-            CHECK_XRCMD(xrAcquireSwapchainImage(swapset->swapchain.Get(), nullptr, &acquiredIndex));
-            swapset->acquiredIndex = acquiredIndex;
-
-            XrSwapchainImageWaitInfo waitInfo = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
-            waitInfo.timeout = XR_INFINITE_DURATION;
-            CHECK_XRCMD(xrWaitSwapchainImage(swapset->swapchain.Get(), &waitInfo));
-
-            if (swapset->useKeyedMutex) {
-                CHECK_HRCMD(swapset->keyedMutexes[acquiredIndex]->ReleaseSync(0));
-            }
+            swapset->acquiredIndex = swapset->nextIndex++;
+            swapset->nextIndex = swapset->nextIndex < 3 ? swapset->nextIndex : 0;
 
             TraceLoggingWriteStop(local, "HmdDriver_CreateSwapTextureSet");
         }
@@ -679,22 +545,7 @@ namespace {
                         (*it)->handles[1] == (HANDLE)sharedTextureHandles[eye] ||
                         (*it)->handles[2] == (HANDLE)sharedTextureHandles[eye]) {
                         auto& swapset = *it;
-                        if (!swapset->acquiredIndex) {
-                            uint32_t acquiredIndex;
-                            CHECK_XRCMD(xrAcquireSwapchainImage(swapset->swapchain.Get(), nullptr, &acquiredIndex));
-                            swapset->acquiredIndex = acquiredIndex;
-                            (*pIndices)[eye] = acquiredIndex;
-
-                            XrSwapchainImageWaitInfo waitInfo = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
-                            waitInfo.timeout = XR_INFINITE_DURATION;
-                            CHECK_XRCMD(xrWaitSwapchainImage(swapset->swapchain.Get(), &waitInfo));
-
-                            if (swapset->useKeyedMutex) {
-                                CHECK_HRCMD(swapset->keyedMutexes[acquiredIndex]->ReleaseSync(0));
-                            }
-                        } else {
-                            (*pIndices)[eye] = *swapset->acquiredIndex;
-                        }
+                        (*pIndices)[eye] = *swapset->acquiredIndex;
                         goodIndicesCount++;
                         break;
                     }
@@ -721,6 +572,7 @@ namespace {
                                    TLPArg((HANDLE)perEye[0].hDepthTexture, "DepthHandle0"),
                                    TLPArg((HANDLE)perEye[1].hDepthTexture, "DepthHandle1"));
 
+            // TODO: "Now playing" layer seems to obstruct game layer.
             FrameLayer layer;
             uint32_t goodViewsCount = 0;
             for (uint32_t eye = 0; eye < xr::StereoView::Count; eye++) {
@@ -797,35 +649,19 @@ namespace {
                 m_syncTextureHandle = (HANDLE)syncTexture;
             }
 
-            ComPtr<IDXGIKeyedMutex> currentSyncMutex;
-            CHECK_HRCMD(m_syncTexture->QueryInterface(IID_PPV_ARGS(currentSyncMutex.ReleaseAndGetAddressOf())));
+            CHECK_HRCMD(m_syncTexture->QueryInterface(IID_PPV_ARGS(m_syncMutex.ReleaseAndGetAddressOf())));
 
-            HRESULT result = currentSyncMutex->AcquireSync(0, 100);
+            HRESULT result = m_syncMutex->AcquireSync(0, 100);
             CHECK_HRCMD(result);
 
             if (result == WAIT_TIMEOUT) {
                 TraceLoggingWriteTagged(local, "HmdDriver_Present_AcquireSyncTimedout");
-                currentSyncMutex.Reset();
+                m_syncMutex.Reset();
             } else if (result == WAIT_ABANDONED) {
                 TraceLoggingWriteTagged(local, "HmdDriver_Present_AcquireSyncAbandoned");
-                currentSyncMutex->ReleaseSync(0);
-                currentSyncMutex.Reset();
+                m_syncMutex->ReleaseSync(0);
+                m_syncMutex.Reset();
             }
-
-            // Flush and release the keyed mutex when done.
-            auto guard = MakeScopeGuard([&]() {
-                if (m_d3d12Device) {
-                    m_d3d12Context->SubmitFence();
-                    m_d3d12Context->Flush();
-                } else {
-                    m_d3d11Context->Flush();
-                }
-
-                if (currentSyncMutex) {
-                    CHECK_HRCMD(currentSyncMutex->ReleaseSync(0));
-                    currentSyncMutex = nullptr;
-                }
-            });
 
             // Release all swapchain images from this frame.
             {
@@ -835,22 +671,17 @@ namespace {
                     if (it->acquiredIndex) {
                         auto& swapset = *it;
 
-                        // Flush the render target to the swapchain if needed.
-                        if (swapset.needCopy) {
-                            // TODO: Copy only used rect (one rect per swapchain being submitted).
-                            if (m_d3d12Device) {
-                                auto commandList = m_d3d12Context->GetCommandList();
-                                commandList.Commands->CopyResource(
-                                    swapset.swapchainTextures12[*swapset.acquiredIndex].Get(),
-                                    swapset.textures12[*swapset.acquiredIndex].Get());
-                                m_d3d12Context->SubmitCommandList(commandList);
-                            } else {
-                                m_d3d11Context->CopyResource(swapset.swapchainTextures11[*swapset.acquiredIndex].Get(),
-                                                             swapset.textures11[*swapset.acquiredIndex].Get());
-                            }
-                        } else if (swapset.useKeyedMutex) {
-                            CHECK_HRCMD(swapset.keyedMutexes[*swapset.acquiredIndex]->AcquireSync(0, 0));
-                        }
+                        // Flush the render target to the swapchain.
+                        uint32_t acquiredIndex;
+                        CHECK_XRCMD(xrAcquireSwapchainImage(swapset.swapchain.Get(), nullptr, &acquiredIndex));
+
+                        XrSwapchainImageWaitInfo waitInfo = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+                        waitInfo.timeout = XR_INFINITE_DURATION;
+                        CHECK_XRCMD(xrWaitSwapchainImage(swapset.swapchain.Get(), &waitInfo));
+
+                        // TODO: Copy only used rect.
+                        m_d3d11Context->CopyResource(swapset.swapchainTextures[acquiredIndex].Get(),
+                                                     swapset.textures[*swapset.acquiredIndex].Get());
 
                         CHECK_XRCMD(xrReleaseSwapchainImage(swapset.swapchain.Get(), nullptr));
                         swapset.acquiredIndex.reset();
@@ -870,7 +701,6 @@ namespace {
                 auto& projection = projections[layerIndex];
                 projection.views = m_frameLayers[layerIndex].views;
                 projection.viewCount = xr::StereoView::Count;
-                // TODO: There seems to be an alpha-blending issue with SteamVR's system layer.
                 projection.layerFlags = layerIndex > 0 ? XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT : 0;
                 projection.space = m_referenceSpace.Get();
                 layers.push_back((XrCompositionLayerBaseHeader*)&projection);
@@ -896,25 +726,57 @@ namespace {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_PostPresent", TLArg(m_deviceIndex, "ObjectId"));
 
-            // Kick-off the next frame.
             {
-                TraceLocalActivity(waitFrame);
-                TraceLoggingWriteStart(waitFrame, "HmdDriver_PostPresent_WaitFrame");
-                CHECK_XRCMD(xrWaitFrame(m_session.Get(), nullptr, &m_frameState));
-                TraceLoggingWriteStop(waitFrame,
-                                      "HmdDriver_PostPresent_WaitFrame",
-                                      TLArg(m_frameState.predictedDisplayTime, "PredictedDisplayTime"),
-                                      TLArg(m_frameState.predictedDisplayPeriod, "PredictedDisplayPeriod"));
+                // Flush and release the keyed mutex.
+                auto guard = MakeScopeGuard([&]() {
+                    m_d3d11Context->Flush();
+
+                    if (m_syncMutex) {
+                        CHECK_HRCMD(m_syncMutex->ReleaseSync(0));
+                        m_syncMutex = nullptr;
+                    }
+                });
+
+                // Kick-off the next frame.
+                {
+                    TraceLocalActivity(waitFrame);
+                    TraceLoggingWriteStart(waitFrame, "HmdDriver_PostPresent_WaitFrame");
+                    CHECK_XRCMD(xrWaitFrame(m_session.Get(), nullptr, &m_frameState));
+                    TraceLoggingWriteStop(waitFrame,
+                                          "HmdDriver_PostPresent_WaitFrame",
+                                          TLArg(m_frameState.predictedDisplayTime, "PredictedDisplayTime"),
+                                          TLArg(m_frameState.predictedDisplayPeriod, "PredictedDisplayPeriod"));
+                }
+
+                const float runningStart =
+                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "running_start"), 0.f, 1.f);
+                const auto vsyncTimeOffset = runningStart * m_frameState.predictedDisplayPeriod / 1e9f;
+                TraceLoggingWriteTagged(
+                    local, "HmdDriver_PostPresent_VsyncEvent", TLArg(vsyncTimeOffset, "VsyncTimeOffset"));
+                vr::VRServerDriverHost()->VsyncEvent(vsyncTimeOffset);
+
+                // Acquire swapset images for the upcoming frame.
+                {
+                    std::shared_lock lock(m_swapsetsMutex);
+
+                    for (auto& it : m_swapsets) {
+                        auto& swapset = *it;
+
+                        if (swapset.acquiredIndex) {
+                            continue;
+                        }
+
+                        swapset.acquiredIndex = swapset.nextIndex++;
+                        swapset.nextIndex = swapset.nextIndex < 3 ? swapset.nextIndex : 0;
+
+                        // Create a dependency on the GPU with the sync texture.
+                        D3D11_BOX box = {};
+                        box.right = box.bottom = box.back = 1;
+                        m_d3d11Context->CopySubresourceRegion(
+                            m_syncTexture.Get(), 0, 0, 0, 0, swapset.textures[*swapset.acquiredIndex].Get(), 0, &box);
+                    }
+                }
             }
-
-            const bool useUpdateThread = m_updateThread.joinable();
-
-            const float runningStart =
-                std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "running_start"), 0.f, 1.f);
-            const auto vsyncTimeOffset = runningStart * m_frameState.predictedDisplayPeriod / 1e9f;
-            TraceLoggingWriteTagged(
-                local, "HmdDriver_PostPresent_VsyncEvent", TLArg(vsyncTimeOffset, "VsyncTimeOffset"));
-            vr::VRServerDriverHost()->VsyncEvent(vsyncTimeOffset);
 
             UpdateHeadProperties(m_frameState.predictedDisplayTime);
             {
@@ -925,6 +787,7 @@ namespace {
             }
 
             // Update HMD, controllers, and eye tracking.
+            const bool useUpdateThread = m_updateThread.joinable();
             if (!useUpdateThread) {
                 LARGE_INTEGER nowQpc = {};
                 QueryPerformanceCounter(&nowQpc);
@@ -1342,56 +1205,33 @@ namespace {
                 return dxgiAdapter;
             };
 
-            if (m_extensions.SupportsD3D12 && vr::VRSettings()->GetBool("driver_cloudxr", "prefer_d3d12")) {
-                XrSessionCreateInfo sessionCreateInfo = {XR_TYPE_SESSION_CREATE_INFO};
-                sessionCreateInfo.systemId = m_system.Id;
+            XrSessionCreateInfo sessionCreateInfo = {XR_TYPE_SESSION_CREATE_INFO};
+            sessionCreateInfo.systemId = m_system.Id;
 
-                XrGraphicsRequirementsD3D12KHR graphicsRequirements = {XR_TYPE_GRAPHICS_REQUIREMENTS_D3D12_KHR};
-                CHECK_XRCMD(xrGetD3D12GraphicsRequirementsKHR(m_instance.Get(), m_system.Id, &graphicsRequirements));
+            XrGraphicsRequirementsD3D11KHR graphicsRequirements = {XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR};
+            CHECK_XRCMD(xrGetD3D11GraphicsRequirementsKHR(m_instance.Get(), m_system.Id, &graphicsRequirements));
 
-                m_adapterLuid = graphicsRequirements.adapterLuid;
-                CHECK_HRCMD(D3D12CreateDevice(getAdapterByLuid(graphicsRequirements.adapterLuid).Get(),
-                                              graphicsRequirements.minFeatureLevel,
-                                              IID_PPV_ARGS(m_d3d12Device.ReleaseAndGetAddressOf())));
-                m_d3d12Context = std::make_unique<D3D12Utils::CommandContext>(m_d3d12Device.Get(), L"Submission");
+            const D3D_FEATURE_LEVEL featureLevel = graphicsRequirements.minFeatureLevel;
+            ComPtr<ID3D11Device> device;
+            CHECK_HRCMD(D3D11CreateDevice(getAdapterByLuid(graphicsRequirements.adapterLuid).Get(),
+                                          D3D_DRIVER_TYPE_UNKNOWN,
+                                          0,
+                                          D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+                                          &featureLevel,
+                                          1,
+                                          D3D11_SDK_VERSION,
+                                          device.ReleaseAndGetAddressOf(),
+                                          nullptr,
+                                          m_d3d11Context.ReleaseAndGetAddressOf()));
 
-                XrGraphicsBindingD3D12KHR graphicsBindings = {XR_TYPE_GRAPHICS_BINDING_D3D12_KHR};
-                graphicsBindings.device = m_d3d12Device.Get();
-                graphicsBindings.queue = m_d3d12Context->GetCommandQueue();
+            XrGraphicsBindingD3D11KHR graphicsBindings = {XR_TYPE_GRAPHICS_BINDING_D3D11_KHR};
+            graphicsBindings.device = device.Get();
 
-                sessionCreateInfo.next = &graphicsBindings;
+            CHECK_HRCMD(device->QueryInterface(IID_PPV_ARGS(m_d3d11Device.ReleaseAndGetAddressOf())));
+            sessionCreateInfo.next = &graphicsBindings;
 
-                CHECK_XRCMD(xrCreateSession(m_instance.Get(), &sessionCreateInfo, m_session.Put(xrDestroySession)));
-                DriverLog("Using Direct3D 12");
-            } else {
-                XrSessionCreateInfo sessionCreateInfo = {XR_TYPE_SESSION_CREATE_INFO};
-                sessionCreateInfo.systemId = m_system.Id;
-
-                XrGraphicsRequirementsD3D11KHR graphicsRequirements = {XR_TYPE_GRAPHICS_REQUIREMENTS_D3D11_KHR};
-                CHECK_XRCMD(xrGetD3D11GraphicsRequirementsKHR(m_instance.Get(), m_system.Id, &graphicsRequirements));
-
-                const D3D_FEATURE_LEVEL featureLevel = graphicsRequirements.minFeatureLevel;
-                ComPtr<ID3D11Device> device;
-                CHECK_HRCMD(D3D11CreateDevice(getAdapterByLuid(graphicsRequirements.adapterLuid).Get(),
-                                              D3D_DRIVER_TYPE_UNKNOWN,
-                                              0,
-                                              D3D11_CREATE_DEVICE_BGRA_SUPPORT,
-                                              &featureLevel,
-                                              1,
-                                              D3D11_SDK_VERSION,
-                                              device.ReleaseAndGetAddressOf(),
-                                              nullptr,
-                                              m_d3d11Context.ReleaseAndGetAddressOf()));
-
-                XrGraphicsBindingD3D11KHR graphicsBindings = {XR_TYPE_GRAPHICS_BINDING_D3D11_KHR};
-                graphicsBindings.device = device.Get();
-
-                CHECK_HRCMD(device->QueryInterface(IID_PPV_ARGS(m_d3d11Device.ReleaseAndGetAddressOf())));
-                sessionCreateInfo.next = &graphicsBindings;
-
-                CHECK_XRCMD(xrCreateSession(m_instance.Get(), &sessionCreateInfo, m_session.Put(xrDestroySession)));
-                DriverLog("Using Direct3D 11");
-            }
+            CHECK_XRCMD(xrCreateSession(m_instance.Get(), &sessionCreateInfo, m_session.Put(xrDestroySession)));
+            DriverLog("Using Direct3D 11");
 
             // Retrieve recommended render resolution.
             {
@@ -1511,32 +1351,16 @@ namespace {
         }
 
         struct TextureSwapset {
-            ~TextureSwapset() {
-                if (useNtHandles) {
-                    // Close NT HANDLE in remote process.
-                    for (auto& handle : handles) {
-                        DuplicateHandle(
-                            processHandle.get(), handle, nullptr, nullptr, 0, false, DUPLICATE_CLOSE_SOURCE);
-                    }
-                }
-            }
-
             std::array<HANDLE, 3> handles;
             std::optional<uint32_t> acquiredIndex;
+            uint32_t nextIndex = 0;
             xr::SwapchainHandle swapchain;
 
             XrSwapchainCreateInfo info;
-            bool needCopy;
-            bool useKeyedMutex;
-            bool useNtHandles;
-            wil::unique_handle processHandle;
             uint32_t pid;
 
-            std::array<ComPtr<ID3D11Texture2D>, 3> textures11;
-            std::array<ComPtr<ID3D11Texture2D>, 3> swapchainTextures11;
-            std::array<ComPtr<ID3D12Resource>, 3> textures12;
-            std::array<ComPtr<ID3D12Resource>, 3> swapchainTextures12;
-            std::array<ComPtr<IDXGIKeyedMutex>, 3> keyedMutexes;
+            std::array<ComPtr<ID3D11Texture2D>, 3> textures;
+            std::array<ComPtr<ID3D11Texture2D>, 3> swapchainTextures;
         };
 
         struct FrameLayer {
@@ -1566,8 +1390,6 @@ namespace {
         LUID m_adapterLuid = {};
         ComPtr<ID3D11Device1> m_d3d11Device;
         ComPtr<ID3D11DeviceContext> m_d3d11Context;
-        ComPtr<ID3D12Device> m_d3d12Device;
-        std::unique_ptr<D3D12Utils::CommandContext> m_d3d12Context;
 
         xr::ActionSetHandle m_actionSet;
         xr::ActionHandle m_eyeGazeAction;
@@ -1586,6 +1408,7 @@ namespace {
 
         HANDLE m_syncTextureHandle = {};
         ComPtr<ID3D11Texture2D> m_syncTexture;
+        ComPtr<IDXGIKeyedMutex> m_syncMutex;
 
         std::vector<FrameLayer> m_frameLayers;
 

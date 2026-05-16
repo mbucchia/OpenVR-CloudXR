@@ -151,7 +151,6 @@ echo const char* DriverCommitHash = "%commit%"; &gt;&gt; $(IntDir)\commit.h
   <ItemGroup>
     <ClInclude Include="..\external\cJSON\cJSON.h" />
     <ClInclude Include="ControllerDriver.h" />
-    <ClInclude Include="D3D12Utils.h" />
     <ClInclude Include="HandDriver.h" />
     <ClInclude Include="HmdDriver.h" />
     <ClInclude Include="pch.h" />
