@@ -29,6 +29,13 @@
 #include "Tracing.h"
 #include "Utilities.h"
 
+#define A_CPU
+#include <ffx-cas/ffx_a.h>
+#include <ffx-cas/ffx_cas.h>
+
+#include "SharpeningCS.h"
+#include "SharpeningSrgbCS.h"
+
 using namespace driver;
 using namespace util;
 using namespace xr::math;
@@ -40,6 +47,12 @@ namespace {
         ComponentEyeGaze,
 
         ComponentCount,
+    };
+
+    struct SharpenCSConstants {
+        alignas(16) uint32_t const0[4];
+        alignas(16) uint32_t const1[4];
+        alignas(8) XrOffset2Di topLeft;
     };
 
     class HmdDriver : public IHmdDriver, public vr::IVRDisplayComponent, public vr::IVRDriverDirectModeComponent {
@@ -588,7 +601,7 @@ namespace {
                         (*it)->handles[2] == (HANDLE)perEye[eye].hTexture) {
                         auto& swapset = *it;
                         layer.views[eye].subImage.swapchain = swapset->swapchain.Get();
-                        layer.views[eye].subImage.imageRect = {
+                        layer.views[eye].subImage.imageRect = swapset->layerRect = {
                             {
                                 std::clamp((int32_t)std::round(perEye[eye].bounds.uMin * swapset->info.width),
                                            0,
@@ -608,6 +621,7 @@ namespace {
                                            (int32_t)swapset->info.height),
 
                             }};
+                        swapset->layerIndex = (uint32_t)m_frameLayers.size();
                         goodViewsCount++;
                     }
                 }
@@ -687,9 +701,101 @@ namespace {
                         waitInfo.timeout = XR_INFINITE_DURATION;
                         CHECK_XRCMD(xrWaitSwapchainImage(swapset.swapchain.Get(), &waitInfo));
 
-                        // TODO: Copy only used rect.
-                        m_d3d11Context->CopyResource(swapset.swapchainTextures[acquiredIndex].Get(),
-                                                     swapset.textures[*swapset.acquiredIndex].Get());
+                        ID3D11Texture2D* inputTexture = swapset.textures[*swapset.acquiredIndex].Get();
+
+                        if (swapset.layerIndex == 0 && m_sharpening > 0) {
+                            // Apply sharpening.
+                            m_d3d11Context->CSSetShader(IsSrgbFormat((DXGI_FORMAT)swapset.info.format)
+                                                            ? m_sharpeningShader[1].Get()
+                                                            : m_sharpeningShader[0].Get(),
+                                                        nullptr,
+                                                        0);
+                            {
+                                SharpenCSConstants constants = {};
+                                constants.topLeft = swapset.layerRect.offset;
+
+                                CasSetup(constants.const0,
+                                         constants.const1,
+                                         m_sharpening,
+                                         (AF1)swapset.layerRect.extent.width,
+                                         (AF1)swapset.layerRect.extent.height,
+                                         (AF1)swapset.layerRect.extent.width,
+                                         (AF1)swapset.layerRect.extent.height);
+
+                                m_d3d11Context->UpdateSubresource(
+                                    m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
+                                m_d3d11Context->CSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                            }
+                            ComPtr<ID3D11ShaderResourceView> srv;
+                            {
+                                D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
+                                desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+                                desc.Format = (DXGI_FORMAT)swapset.info.format;
+                                desc.Texture2D.MipLevels = 1;
+                                CHECK_HRCMD(m_d3d11Device->CreateShaderResourceView(
+                                    swapset.textures[*swapset.acquiredIndex].Get(),
+                                    &desc,
+                                    srv.ReleaseAndGetAddressOf()));
+                            }
+                            m_d3d11Context->CSSetShaderResources(0, 1, srv.GetAddressOf());
+                            ComPtr<ID3D11UnorderedAccessView> uav;
+                            {
+                                // TODO: Migrate to a pixel shader so we can directly render to the swapchain texture.
+                                {
+                                    D3D11_TEXTURE2D_DESC desc{};
+                                    swapset.swapchainTextures[0]->GetDesc(&desc);
+                                    desc.Format = GetUavFormat(desc.Format);
+                                    desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
+                                    desc.MiscFlags = 0;
+                                    CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
+                                        &desc, nullptr, swapset.tempTexture.ReleaseAndGetAddressOf()));
+                                }
+                                D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {};
+                                desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+                                desc.Format = GetUavFormat((DXGI_FORMAT)swapset.info.format);
+                                CHECK_HRCMD(m_d3d11Device->CreateUnorderedAccessView(
+                                    swapset.tempTexture.Get(), &desc, uav.ReleaseAndGetAddressOf()));
+                            }
+                            m_d3d11Context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+
+                            const uint32_t blockWidth = 16;
+                            const uint32_t blockHeight = 16;
+                            m_d3d11Context->Dispatch(
+                                ((swapset.layerRect.extent.width + blockWidth - 1) / blockWidth),
+                                ((swapset.layerRect.extent.height + blockHeight - 1) / blockHeight),
+                                1);
+
+                            // Unbind all resources to avoid D3D validation errors.
+                            {
+                                m_d3d11Context->CSSetShader(nullptr, nullptr, 0);
+                                ID3D11Buffer* nullCbv[] = {nullptr};
+                                m_d3d11Context->CSSetConstantBuffers(0, 1, nullCbv);
+                                ID3D11ShaderResourceView* nullSrv[] = {nullptr};
+                                m_d3d11Context->CSSetShaderResources(0, 1, nullSrv);
+                                ID3D11UnorderedAccessView* nullUav[] = {nullptr};
+                                m_d3d11Context->CSSetUnorderedAccessViews(0, 1, nullUav, nullptr);
+                            }
+
+                            inputTexture = swapset.tempTexture.Get();
+                        }
+
+                        {
+                            // Simply copy.
+                            D3D11_BOX box = {};
+                            box.left = swapset.layerRect.offset.x;
+                            box.top = swapset.layerRect.offset.y;
+                            box.right = box.left + swapset.layerRect.extent.width;
+                            box.bottom = box.top + swapset.layerRect.extent.height;
+                            box.back = 1;
+                            m_d3d11Context->CopySubresourceRegion(swapset.swapchainTextures[acquiredIndex].Get(),
+                                                                  0,
+                                                                  swapset.layerRect.offset.x,
+                                                                  swapset.layerRect.offset.y,
+                                                                  0,
+                                                                  inputTexture,
+                                                                  0,
+                                                                  &box);
+                        }
 
                         CHECK_XRCMD(xrReleaseSwapchainImage(swapset.swapchain.Get(), nullptr));
                         swapset.acquiredIndex.reset();
@@ -860,6 +966,8 @@ namespace {
                     }
                 }
             }
+
+            m_sharpening = std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "sharpening"), 0.f, 1.f);
 
             TraceLoggingWriteStop(local, "HmdDriver_PostPresent");
         }
@@ -1236,6 +1344,24 @@ namespace {
             CHECK_XRCMD(xrCreateSession(m_instance.Get(), &sessionCreateInfo, m_session.Put(xrDestroySession)));
             DriverLog("Using Direct3D 11");
 
+            // Resources for CAS.
+            {
+                CHECK_HRCMD(m_d3d11Device->CreateComputeShader(
+                    k_SharpeningCS, sizeof(k_SharpeningCS), nullptr, m_sharpeningShader[0].ReleaseAndGetAddressOf()));
+                CHECK_HRCMD(m_d3d11Device->CreateComputeShader(k_SharpeningSrgbCS,
+                                                               sizeof(k_SharpeningSrgbCS),
+                                                               nullptr,
+                                                               m_sharpeningShader[1].ReleaseAndGetAddressOf()));
+
+                D3D11_BUFFER_DESC desc{};
+                desc.ByteWidth = (UINT)((sizeof(SharpenCSConstants) + 15) / 16) * 16;
+                desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+                desc.Usage = D3D11_USAGE_DEFAULT;
+
+                CHECK_HRCMD(
+                    m_d3d11Device->CreateBuffer(&desc, nullptr, m_sharpeningConstants.ReleaseAndGetAddressOf()));
+            }
+
             for (uint32_t i = 0; i < k_numGpuTimers; i++) {
                 m_gpuTimerCopy[i] = std::make_unique<D3D11GpuTimer>(device.Get(), m_d3d11Context.Get());
             }
@@ -1368,6 +1494,10 @@ namespace {
 
             std::array<ComPtr<ID3D11Texture2D>, 3> textures;
             std::array<ComPtr<ID3D11Texture2D>, 3> swapchainTextures;
+            ComPtr<ID3D11Texture2D> tempTexture;
+
+            uint32_t layerIndex = 0;
+            XrRect2Di layerRect = {};
         };
 
         struct FrameLayer {
@@ -1397,6 +1527,8 @@ namespace {
         LUID m_adapterLuid = {};
         ComPtr<ID3D11Device1> m_d3d11Device;
         ComPtr<ID3D11DeviceContext> m_d3d11Context;
+        ComPtr<ID3D11ComputeShader> m_sharpeningShader[2];
+        ComPtr<ID3D11Buffer> m_sharpeningConstants;
 
         xr::ActionSetHandle m_actionSet;
         xr::ActionHandle m_eyeGazeAction;
@@ -1409,6 +1541,7 @@ namespace {
 
         XrFrameState m_frameState = {XR_TYPE_FRAME_STATE};
         XrFovf m_cachedEyeFov[xr::StereoView::Count] = {};
+        float m_sharpening = 0.f;
 
         std::shared_mutex m_swapsetsMutex;
         std::vector<std::unique_ptr<TextureSwapset>> m_swapsets;

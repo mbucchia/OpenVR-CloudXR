@@ -13,3 +13,6 @@
 [submodule "external/directx11_hellovr"]
 	path = hellovr
 	url = https://github.com/mbucchia/directx11_hellovr.git
+[submodule "external/FidelityFX-CAS"]
+	path = external/FidelityFX-CAS
+	url = https://github.com/GPUOpen-Effects/FidelityFX-CAS.git

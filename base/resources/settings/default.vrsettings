@@ -6,6 +6,7 @@
     "use_windows_key": 3,
     "motion_controllers_personality": 0,
     "enable_hand_tracking": false,
+    "sharpening": 0,
     "start_cloudxr_service": false,
     "cloudxr_profile": "auto-native",
     "cloudxr_audio_enable": true,

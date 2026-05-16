@@ -103,6 +103,18 @@ namespace util {
         return false;
     }
 
+    static inline DXGI_FORMAT GetUavFormat(DXGI_FORMAT format) {
+        switch (format) {
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+            return DXGI_FORMAT_R8G8B8A8_UNORM;
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+            return DXGI_FORMAT_B8G8R8A8_UNORM;
+        case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
+            return DXGI_FORMAT_B8G8R8X8_UNORM;
+        }
+        return format;
+    }
+
     static inline DXGI_FORMAT GetTypedFormat(DXGI_FORMAT format) {
         switch (format) {
         case DXGI_FORMAT_R8G8B8A8_TYPELESS:
