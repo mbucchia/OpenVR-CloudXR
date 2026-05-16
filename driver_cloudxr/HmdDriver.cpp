@@ -123,6 +123,9 @@ namespace {
             // We control vsync from our PostPresent() method.
             vr::VRProperties()->SetBoolProperty(container, vr::Prop_DriverDirectModeSendsVsyncEvents_Bool, true);
 
+            // TODO: Investigate if this is a good idea, let CloudXR do all the prediction.
+            // vr::VRProperties()->SetBoolProperty(container, vr::Prop_DoNotApplyPrediction_Bool, true);
+
             {
                 vr::CVRHiddenAreaHelpers helpers = {vr::VRPropertiesRaw()};
                 for (int eye = 0; eye < xr::StereoView::Count; eye++) {
@@ -642,7 +645,13 @@ namespace {
 
             CHECK_HRCMD(m_syncTexture->QueryInterface(IID_PPV_ARGS(m_syncMutex.ReleaseAndGetAddressOf())));
 
-            HRESULT result = m_syncMutex->AcquireSync(0, 100);
+            HRESULT result;
+            {
+                TraceLocalActivity(acquireSync);
+                TraceLoggingWriteStart(acquireSync, "HmdDriver_Present_AcquireSync");
+                result = m_syncMutex->AcquireSync(0, 100);
+                TraceLoggingWriteStop(acquireSync, "HmdDriver_Present_AcquireSync", TLArg(result, "Result"));
+            }
             CHECK_HRCMD(result);
 
             if (result == WAIT_TIMEOUT) {
@@ -652,6 +661,12 @@ namespace {
                 TraceLoggingWriteTagged(local, "HmdDriver_Present_AcquireSyncAbandoned");
                 m_syncMutex->ReleaseSync(0);
                 m_syncMutex.Reset();
+            }
+
+            // Read oldest timer (before we start a new measurement).
+            const auto lastCopyTime = m_gpuTimerCopy[m_currentTimerIndex]->query();
+            if (IsTraceEnabled()) {
+                m_gpuTimerCopy[m_currentTimerIndex]->start();
             }
 
             // Release all swapchain images from this frame.
@@ -678,6 +693,12 @@ namespace {
                         swapset.acquiredIndex.reset();
                     }
                 }
+            }
+
+            if (IsTraceEnabled()) {
+                m_gpuTimerCopy[m_currentTimerIndex]->stop();
+                m_currentTimerIndex = m_currentTimerIndex++;
+                m_currentTimerIndex = m_currentTimerIndex < k_numGpuTimers ? m_currentTimerIndex : 0;
             }
 
             // Submit the current frame.
@@ -710,7 +731,8 @@ namespace {
 
             m_frameLayers.clear();
 
-            TraceLoggingWriteStop(local, "HmdDriver_Present");
+            TraceLoggingWriteStop(
+                local, "HmdDriver_Present", TLArg(m_frameTimes.size(), "Fps"), TLArg(lastCopyTime, "LastCopyTimeUs"));
         }
 
         void PostPresent(const Throttling_t* pThrottling) override {
@@ -785,9 +807,9 @@ namespace {
                 CHECK_XRCMD(xrConvertWin32PerformanceCounterToTimeKHR(m_instance.Get(), &nowQpc, &now));
 
                 const float headPredictionBlending =
-                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "head_prediction_blend"), -1.f, 1.f);
+                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "head_prediction_blend"), 0.f, 1.f);
                 const float controllerPredictionBlending =
-                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "controller_prediction_blend"), -1.f, 1.f);
+                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "controller_prediction_blend"), 0.f, 1.f);
 
                 TraceLoggingWriteTagged(local,
                                         "HmdDriver_PostPresent_ApplyPrediction",
@@ -796,10 +818,7 @@ namespace {
                                         TLArg(controllerPredictionBlending, "ControllerPredictionBlending"));
 
                 const auto applyPredictionBlending = [&](float blending) {
-                    if (blending >= 0) {
-                        return (XrTime)(now + blending * std::max(m_frameState.predictedDisplayTime - now, 0ll));
-                    }
-                    return (XrTime)(now + blending * m_frameState.predictedDisplayPeriod);
+                    return (XrTime)(now + blending * std::max(m_frameState.predictedDisplayTime - now, 0ll));
                 };
 
                 const XrTime timeForHeadTracking = applyPredictionBlending(headPredictionBlending);
@@ -815,6 +834,12 @@ namespace {
                 if (m_hasEyeTracking) {
                     // Always use predicted display time for eye tracking.
                     UpdateEyeTrackingState(m_frameState.predictedDisplayTime);
+                }
+
+                // Update the FPS counter.
+                m_frameTimes.push_back(now);
+                while (now - m_frameTimes.front() >= 1'000'000'000) {
+                    m_frameTimes.pop_front();
                 }
             }
 
@@ -1182,6 +1207,10 @@ namespace {
             CHECK_XRCMD(xrCreateSession(m_instance.Get(), &sessionCreateInfo, m_session.Put(xrDestroySession)));
             DriverLog("Using Direct3D 11");
 
+            for (uint32_t i = 0; i < k_numGpuTimers; i++) {
+                m_gpuTimerCopy[i] = std::make_unique<D3D11GpuTimer>(device.Get(), m_d3d11Context.Get());
+            }
+
             // Retrieve recommended render resolution.
             {
                 const auto views = xr::EnumerateViewConfigurationViews(
@@ -1367,6 +1396,11 @@ namespace {
         PROCESS_INFORMATION m_clientProcessInfo = {};
 
         bool m_isFirstFrame = true;
+
+        static constexpr uint32_t k_numGpuTimers = 3;
+        std::unique_ptr<D3D11GpuTimer> m_gpuTimerCopy[k_numGpuTimers];
+        uint32_t m_currentTimerIndex = 0;
+        std::deque<XrTime> m_frameTimes;
     };
 
 } // namespace

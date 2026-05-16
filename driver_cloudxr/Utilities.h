@@ -27,6 +27,57 @@
 
 namespace util {
 
+    // An asynchronous GPU timer for Direct3D 11.
+    class D3D11GpuTimer {
+      public:
+        D3D11GpuTimer(ID3D11Device* device, ID3D11DeviceContext* context) : m_context(context) {
+            D3D11_QUERY_DESC queryDesc{};
+            queryDesc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
+            CHECK_HRCMD(device->CreateQuery(&queryDesc, m_timeStampDis.ReleaseAndGetAddressOf()));
+            queryDesc.Query = D3D11_QUERY_TIMESTAMP;
+            CHECK_HRCMD(device->CreateQuery(&queryDesc, m_timeStampStart.ReleaseAndGetAddressOf()));
+            CHECK_HRCMD(device->CreateQuery(&queryDesc, m_timeStampEnd.ReleaseAndGetAddressOf()));
+        }
+
+        void start() {
+            m_context->Begin(m_timeStampDis.Get());
+            m_context->End(m_timeStampStart.Get());
+        }
+
+        void stop() {
+            m_context->End(m_timeStampEnd.Get());
+            m_context->End(m_timeStampDis.Get());
+            m_valid = true;
+        }
+
+        uint64_t query(bool reset = true) const {
+            uint64_t duration = 0;
+            if (m_valid) {
+                UINT64 startime = 0, endtime = 0;
+                D3D11_QUERY_DATA_TIMESTAMP_DISJOINT disData = {0};
+
+                if (m_context->GetData(m_timeStampStart.Get(), &startime, sizeof(UINT64), 0) == S_OK &&
+                    m_context->GetData(m_timeStampEnd.Get(), &endtime, sizeof(UINT64), 0) == S_OK &&
+                    m_context->GetData(
+                        m_timeStampDis.Get(), &disData, sizeof(D3D11_QUERY_DATA_TIMESTAMP_DISJOINT), 0) == S_OK &&
+                    !disData.Disjoint) {
+                    duration = static_cast<uint64_t>(((endtime - startime) * 1e6) / disData.Frequency);
+                }
+                m_valid = !reset;
+            }
+            return duration;
+        }
+
+      private:
+        const ComPtr<ID3D11DeviceContext> m_context;
+        ComPtr<ID3D11Query> m_timeStampDis;
+        ComPtr<ID3D11Query> m_timeStampStart;
+        ComPtr<ID3D11Query> m_timeStampEnd;
+
+        // Can the timer be queried (it might still only read 0).
+        mutable bool m_valid{false};
+    };
+
     static inline bool IsDepthFormat(DXGI_FORMAT format) {
         switch (format) {
         case DXGI_FORMAT_D16_UNORM:
@@ -37,6 +88,16 @@ namespace util {
         case DXGI_FORMAT_R32_TYPELESS:
         case DXGI_FORMAT_D32_FLOAT_S8X24_UINT:
         case DXGI_FORMAT_R32G8X24_TYPELESS:
+            return true;
+        }
+        return false;
+    }
+
+    static inline bool IsSrgbFormat(DXGI_FORMAT format) {
+        switch (format) {
+        case DXGI_FORMAT_R8G8B8A8_UNORM_SRGB:
+        case DXGI_FORMAT_B8G8R8A8_UNORM_SRGB:
+        case DXGI_FORMAT_B8G8R8X8_UNORM_SRGB:
             return true;
         }
         return false;

@@ -6,9 +6,6 @@
     "use_windows_key": 3,
     "motion_controllers_personality": 0,
     "enable_hand_tracking": false,
-    "head_prediction_blend": 0,
-    "controller_prediction_blend": 0,
-    "running_start": 1,
     "start_cloudxr_service": false,
     "cloudxr_profile": "auto-native",
     "cloudxr_audio_enable": true,
@@ -17,6 +14,9 @@
     "cloudxr_video_buffering": false,
     "cloudxr_use_10_bits": false,
     "cloudxr_foveation_enable": true,
-    "cloudxr_foveation_inset": 40
+    "cloudxr_foveation_inset": 40,
+    "head_prediction_blend": 1,
+    "controller_prediction_blend": 1,
+    "running_start": 1
   }
 }
