@@ -439,7 +439,8 @@ namespace {
             swapset->info.sampleCount = pSwapTextureSetDesc->nSampleCount;
             swapset->info.usageFlags = (!IsDepthFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat)
                                             ? XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT
-                                            : XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
+                                            : XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
+                                       XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
 
             CHECK_XRCMD(xrCreateSwapchain(m_session.Get(), &swapset->info, swapset->swapchain.Put(xrDestroySwapchain)));
 
