@@ -464,6 +464,8 @@ namespace {
                     CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
                         &desc, nullptr, swapset->textures[index].ReleaseAndGetAddressOf()));
                 } else {
+                    // We only create one texture to save memory. Since we do a copy in Present(), there is no need for
+                    // the runtime to hold onto that texture.
                     swapset->textures[index] = swapset->textures[0];
                 }
 
