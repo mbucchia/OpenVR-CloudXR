@@ -5,6 +5,10 @@
     "show_without_hmd": true,
     "values": [
       {
+        "name": "/settings/driver_cloudxr/allow_service_start",
+        "type": "bool"
+      },
+      {
         "name": "/settings/driver_cloudxr/use_windows_key",
         "control": "select",
         "label": "Use System/Windows Button",
@@ -65,7 +69,10 @@
         "name": "/settings/driver_cloudxr/start_cloudxr_service",
         "control": "toggle",
         "label": "Start Built-in CloudXR Service",
-        "requires_restart": true
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true
+        }
       },
       {
         "name": "/settings/driver_cloudxr/cloudxr_profile",
@@ -84,6 +91,7 @@
         ],
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true
         }
       },
@@ -93,6 +101,7 @@
         "label": "CloudXR Audio Streaming",
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true
         }
       },
@@ -105,6 +114,7 @@
         "off_label": "Automatic",
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true
         }
       },
@@ -119,6 +129,7 @@
         "step": 16,
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true,
           "/settings/driver_cloudxr/cloudxr_streaming_settings": true
         }
@@ -130,6 +141,7 @@
         "advanced_only": true,
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true,
           "/settings/driver_cloudxr/cloudxr_streaming_settings": true
         }
@@ -141,6 +153,7 @@
         "advanced_only": true,
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true,
           "/settings/driver_cloudxr/cloudxr_streaming_settings": true
         }
@@ -152,6 +165,7 @@
         "advanced_only": true,
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true,
           "/settings/driver_cloudxr/cloudxr_streaming_settings": true
         }
@@ -167,6 +181,7 @@
         "step": 1,
         "requires_restart": true,
         "requires": {
+          "/settings/driver_cloudxr/allow_service_start": true,
           "/settings/driver_cloudxr/start_cloudxr_service": true,
           "/settings/driver_cloudxr/cloudxr_streaming_settings": true,
           "/settings/driver_cloudxr/cloudxr_foveation_enable": true

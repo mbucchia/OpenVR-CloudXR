@@ -80,6 +80,8 @@ namespace {
                           DriverVersionPatch,
                           DriverCommitHash);
 
+                vr::VRSettings()->SetBool("driver_cloudxr", "allow_service_start", true);
+
                 // Which OpenXR runtime to use?
                 std::wstring runtimeJson;
                 {
@@ -110,6 +112,8 @@ namespace {
                         }
                     }
                 } else {
+                    vr::VRSettings()->SetBool("driver_cloudxr", "allow_service_start", false);
+
                     // With override, find the full path to the desired OpenXR runtime.
                     wil::unique_hkey enumKey;
                     const LSTATUS status = RegOpenKeyEx(HKEY_LOCAL_MACHINE,
