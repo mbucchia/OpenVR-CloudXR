@@ -568,6 +568,8 @@ namespace {
                                    TLPArg((HANDLE)perEye[0].hDepthTexture, "DepthHandle0"),
                                    TLPArg((HANDLE)perEye[1].hDepthTexture, "DepthHandle1"));
 
+            std::unique_lock lock(m_swapsetsMutex);
+
             // TODO: "Now playing" layer seems to obstruct game layer.
             FrameLayer layer;
             uint32_t goodViewsCount = 0;
@@ -615,8 +617,6 @@ namespace {
                                         TLArg(xr::ToString(layer.views[eye].pose).c_str(), "Pose"),
                                         TLArg(xr::ToString(layer.views[eye].fov).c_str(), "Fov"),
                                         TLArg(xr::ToString(layer.views[eye].subImage.imageRect).c_str(), "ImageRect"));
-
-                // TODO: Submit depth. This is only useful with OpenXR apps (low priority for this driver).
             }
 
             if (goodViewsCount == xr::StereoView::Count) {
