@@ -188,8 +188,6 @@ namespace {
                     container, "/eyetracking", &m_components[ComponentEyeGaze]);
             }
 
-            ApplySettingsChanges();
-
             // clang-format off
             vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceOff_String, "{cloudxr}/icons/cxr_off.png");
             vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceSearching_String, "{cloudxr}/icons/cxr_searching.png");
@@ -217,6 +215,8 @@ namespace {
                     m_sharedFileHandle.get(), FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, sizeof(*m_sharedMemory));
                 memset(m_sharedMemory, 0, sizeof(*m_sharedMemory));
             }
+
+            ApplySettingsChanges();
 
             // Go time!
             {
