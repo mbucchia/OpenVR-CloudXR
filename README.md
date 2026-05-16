@@ -15,7 +15,7 @@ DISCLAIMER: This software is distributed as-is, without any warranties or condit
 - Motion Controllers tracking
 - Motion Controllers inputs (eg: triggers, buttons...)
 - Motion Controllers haptics [NOT SUPPORTED BY CLOUDXR as of May 2026]
-- Hand joints tracking [WORK IN PROGRESS]
+- Hand joints tracking
 - Eye tracking [NOT SUPPORTED BY CLOUDXR as of May 2026]
 - Visibility mask (aka "hidden area mesh") [NOT SUPPORTED BY CLOUDXR as of May 2026]
 

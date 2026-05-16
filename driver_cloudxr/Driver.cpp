@@ -462,7 +462,6 @@ namespace {
             TraceLoggingWriteStart(local, "Driver_StopCloudXrService");
 
             nv_cxr_service_stop(m_service);
-            // TODO: This hangs sometimes. Need a watchdog of some sort.
             nv_cxr_service_join(m_service);
             nv_cxr_service_destroy(m_service);
 

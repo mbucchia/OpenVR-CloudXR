@@ -83,9 +83,8 @@ namespace {
                    vr::ETrackedControllerRole role)
             : m_role(role), m_instance(instance), m_session(session), m_referenceSpace(referenceSpace) {
             TraceLocalActivity(local);
-            TraceLoggingWriteStart(local,
-                                   "HandDriver_Ctor",
-                                   TLArg(m_role == vr::TrackedControllerRole_LeftHand ? "Left" : "Right", "Role"));
+            const bool isLeft = m_role == vr::TrackedControllerRole_LeftHand;
+            TraceLoggingWriteStart(local, "HandDriver_Ctor", TLArg(isLeft ? "Left" : "Right", "Role"));
 
             m_serialNumber = m_role == vr::TrackedControllerRole_LeftHand ? "HAND_LEFT" : "HAND_RIGHT";
 
@@ -113,8 +112,6 @@ namespace {
 
             m_deviceIndex = unObjectId;
 
-            ApplySettingsChanges();
-
             const vr::PropertyContainerHandle_t container =
                 vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
 
@@ -137,6 +134,8 @@ namespace {
 
             vr::VRProperties()->SetStringProperty(
                 container, vr::Prop_RenderModelName_String, "{vrlink}/rendermodels/shuttlecock");
+
+            vr::VRProperties()->SetInt32Property(container, vr::Prop_ControllerHandSelectionPriority_Int32, 100);
 
             // clang-format off
             vr::VRProperties()->SetStringProperty(container, vr::Prop_NamedIconPathDeviceOff_String, isLeft ? "{vrlink}/icons/left_handtracking_off.png" : "{vrlink}/icons/right_handtracking_off.png");
@@ -173,6 +172,8 @@ namespace {
                 CHECK_XRCMD(
                     xrCreateHandTrackerEXT(m_session.Get(), &createInfo, m_handTracker.Put(xrDestroyHandTrackerEXT)));
             }
+
+            ApplySettingsChanges();
 
             m_ready = true;
 
@@ -283,10 +284,11 @@ namespace {
 
         void UpdateTrackingState(XrTime time) override {
             TraceLocalActivity(local);
+            const bool isLeft = m_role == vr::TrackedControllerRole_LeftHand;
             TraceLoggingWriteStart(local,
                                    "HandDriver_UpdateTrackingState",
                                    TLArg(m_deviceIndex, "ObjectId"),
-                                   TLArg(m_role == vr::TrackedControllerRole_LeftHand ? "Left" : "Right", "Role"),
+                                   TLArg(isLeft ? "Left" : "Right", "Role"),
                                    TLArg(time, "Time"));
 
             vr::DriverPose_t pose = {};
@@ -297,8 +299,8 @@ namespace {
                 XrHandJointsLocateInfoEXT info = {XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
                 info.baseSpace = m_referenceSpace.Get();
                 info.time = time;
-                XrHandJointLocationEXT joints[XR_HAND_JOINT_COUNT_EXT];
-                XrHandJointVelocityEXT velocities[XR_HAND_JOINT_COUNT_EXT];
+                XrHandJointLocationEXT joints[XR_HAND_JOINT_COUNT_EXT] = {};
+                XrHandJointVelocityEXT velocities[XR_HAND_JOINT_COUNT_EXT] = {};
                 XrHandJointLocationsEXT locations = {XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
                 XrHandJointVelocitiesEXT locationVelocities = {XR_TYPE_HAND_JOINT_VELOCITIES_EXT};
                 locations.next = &locationVelocities;
@@ -314,7 +316,6 @@ namespace {
                                         TLArg(xr::ToString(joints[k_TrackedJoint].pose).c_str(), "Pose"));
 
                 // Update the root pose.
-                // TODO: Fix the incorrect pose offset here.
                 pose.deviceIsConnected = locations.isActive;
                 pose.result = vr::TrackingResult_Running_OutOfRange;
 
@@ -392,7 +393,7 @@ namespace {
                         // )};
                         //
                         // Also, HmdQuaternionf_t is w,x,y,z
-                        if (m_role == vr::TrackedControllerRole_LeftHand) {
+                        if (isLeft) {
                             bone.orientation = {XMVectorGetW(orientation),
                                                 -XMVectorGetZ(orientation),
                                                 -XMVectorGetY(orientation),
@@ -423,22 +424,15 @@ namespace {
                                 // can be constrained to the reference pose of the controller that is animating the
                                 // skeleton.
                                 static_assert(k_TrackedJoint == XR_HAND_JOINT_WRIST_EXT);
-                                openvrPose = XMMatrixIdentity();
+                                // TODO: Magic root transform. Should try to understand why this is needed.
+                                openvrPose =
+                                    DirectX::XMMatrixRotationQuaternion(DirectX::XMQuaternionRotationRollPitchYaw(
+                                        DEG_TO_RAD(isLeft ? -270.f : 90.f), DEG_TO_RAD(180.f), DEG_TO_RAD(0.f)));
                                 openxrRootPose = openxrPose;
                                 break;
 
                             case BoneWrist:
-                                // Magic offset from Index Controller
-                                // https://github.com/ValveSoftware/openvr/blob/f51d87ecf8f7903e859b0aa4d617ff1e5f33db5a/samples/drivers/drivers/handskeletonsimulation/src/hand_simulation.cpp#L232C1-L233C1
-                                // Swizzled to map with StorePose().
-                                openvrPose = m_role == vr::TrackedControllerRole_LeftHand
-                                                 ? XMMatrixRotationQuaternion(
-                                                       XMVectorSet(-0.379296f, 0.920279f, 0.078608f, -0.055147f))
-                                                 : XMMatrixRotationQuaternion(
-                                                       XMVectorSet(0.379296f, 0.920279f, -0.078608f, -0.055147f));
-                                openvrPose.r[3] = m_role == vr::TrackedControllerRole_LeftHand
-                                                      ? XMVectorSet(-0.164722f, -0.036503f, 0.034038f, 1.000000f)
-                                                      : XMVectorSet(-0.164722f, 0.036503f, 0.034038f, 1.000000f);
+                                openvrPose = XMMatrixIdentity();
                                 openxrWristPose = openxrPose;
                                 break;
 
@@ -504,6 +498,11 @@ namespace {
                                                                  transforms,
                                                                  BoneCount);
                 }
+
+                // Detect gestures if the hand interaction profile isn't bound (not supported by the runtime).
+                if (m_actions[ComponentIndexPinch].Get() == XR_NULL_HANDLE) {
+                    ProcessHandGestures(joints);
+                }
             }
 
             TraceLoggingWriteStop(
@@ -540,7 +539,7 @@ namespace {
                     updateAnalog(ComponentPinkyPinch);
                 } else {
                     // The interaction profile wasn't bound (not supported by the runtime).
-                    // TODO: Fallback that emulates from hand joints math.
+                    vr::VRDriverInput()->UpdateScalarComponent(m_components[ComponentIndexPinch], m_indexPinch, 0.0);
                 }
             }
 
@@ -556,6 +555,37 @@ namespace {
         }
 
       private:
+        void ProcessHandGestures(XrHandJointLocationEXT (&joints)[XR_HAND_JOINT_COUNT_EXT]) {
+            TraceLocalActivity(local);
+            const bool isLeft = m_role == vr::TrackedControllerRole_LeftHand;
+            TraceLoggingWriteStart(local,
+                                   "HandDriver_ProcessHandGestures",
+                                   TLArg(m_deviceIndex, "ObjectId"),
+                                   TLArg(isLeft ? "Left" : "Right", "Role"));
+
+            const auto jointActionValue = [](const XrHandJointLocationEXT& joint1,
+                                             const XrHandJointLocationEXT& joint2) {
+                static constexpr float NearDistance = 0.01f;
+                static constexpr float FarDistance = 0.02f;
+
+                if (!(Pose::IsPoseValid(joint1.locationFlags) && Pose::IsPoseValid(joint2.locationFlags))) {
+                    return 0.f;
+                }
+
+                // Compute the distance between the two joints, and subtract the radii.
+                const float distance =
+                    std::max(Length(joint1.pose.position - joint2.pose.position) - joint1.radius - joint2.radius, 0.f);
+
+                return 1.f -
+                       (std::clamp(distance, NearDistance, FarDistance) - NearDistance) / (FarDistance - NearDistance);
+            };
+
+            // TODO: Gestures detection can be improved.
+            m_indexPinch = jointActionValue(joints[XR_HAND_JOINT_INDEX_TIP_EXT], joints[XR_HAND_JOINT_THUMB_TIP_EXT]);
+
+            TraceLoggingWriteStop(local, "HandDriver_ProcessHandGestures");
+        }
+
         const vr::ETrackedControllerRole m_role;
         xr::InstanceHandle& m_instance;
         xr::SessionHandle& m_session;
@@ -570,6 +600,8 @@ namespace {
 
         xr::HandTrackerHandle m_handTracker;
         xr::ActionHandle m_actions[ComponentCount];
+
+        float m_indexPinch = 0.f;
 
         DirectX::XMMATRIX m_poseOffset = DirectX::XMMatrixIdentity();
 

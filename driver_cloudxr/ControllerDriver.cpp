@@ -180,8 +180,6 @@ namespace {
 
             m_deviceIndex = unObjectId;
 
-            ApplySettingsChanges();
-
             const vr::PropertyContainerHandle_t container =
                 vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
 
@@ -370,6 +368,8 @@ namespace {
                     container, getPath(personality.menuPath, "/click").c_str(), &m_components[ComponentMenu]);
             }
             vr::VRDriverInput()->CreateHapticComponent(container, "/output/haptic", &m_components[ComponentHaptics]);
+
+            ApplySettingsChanges();
 
             m_ready = true;
 
