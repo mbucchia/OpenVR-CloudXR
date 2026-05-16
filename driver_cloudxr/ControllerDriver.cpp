@@ -107,8 +107,7 @@ namespace {
             /* thumbrestPath */ {"/input/left_ps", "/input/right_ps"},
             /* button1Path */ {"/input/triangle", "/input/circle"},
             /* button2Path */ {"/input/square", "/input/cross"},
-            /* menuPath */ "/input/create",
-
+            /* menuPath */ "/input/left_ps",
         },
         // Oculus Touch
         {
@@ -367,7 +366,6 @@ namespace {
             vr::VRDriverInput()->CreateBooleanComponent(
                 container, getPath(personality.button2Path, "/touch").c_str(), &m_components[ComponentButton2Touch]);
             if (isLeft) {
-                // TODO: CloudXR does not seem to send the action for /input/menu.
                 vr::VRDriverInput()->CreateBooleanComponent(
                     container, getPath(personality.menuPath, "/click").c_str(), &m_components[ComponentMenu]);
             }
@@ -515,6 +513,21 @@ namespace {
                 addInput(ComponentButton2Touch, XR_ACTION_TYPE_BOOLEAN_INPUT, "a/touch", "a_touch", "A Touch");
             }
             // clang-format on
+
+            // TODO: CloudXR does not seem to send the action for /input/menu.
+            // Instead, we use L3+R3.
+            if (isLeft) {
+                XrActionCreateInfo actionCreateInfo = {XR_TYPE_ACTION_CREATE_INFO};
+                strcpy_s(actionCreateInfo.actionName, "steamvr_right_thumbstick_click_alt");
+                strcpy_s(actionCreateInfo.localizedActionName, "Right Controller Thumbstick Alt");
+                actionCreateInfo.actionType = XR_ACTION_TYPE_BOOLEAN_INPUT;
+                actionCreateInfo.countSubactionPaths = 0;
+                CHECK_XRCMD(xrCreateAction(actionSet, &actionCreateInfo, m_thumbstickAltAction.Put(xrDestroyAction)));
+
+                auto& binding = bindings.emplace_back();
+                binding.action = m_thumbstickAltAction.Get();
+                binding.binding = xr::StringToPath(m_instance.Get(), "/user/hand/right/input/thumbstick/click");
+            }
 
             TraceLoggingWriteStop(local, "ControllerDriver_CreateBindings");
 
@@ -669,6 +682,8 @@ namespace {
                 const vr::PropertyContainerHandle_t container =
                     vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
 
+                bool thumbstickClickState = false;
+
                 const auto updateButton = [&](Component index) {
                     XrActionStateGetInfo info = {XR_TYPE_ACTION_STATE_GET_INFO};
                     info.action = m_actions[index].Get();
@@ -679,6 +694,9 @@ namespace {
                                             TLArg(!!state.isActive, "IsActive"),
                                             TLArg(!!state.currentState, "State"));
                     vr::VRDriverInput()->UpdateBooleanComponent(m_components[index], state.currentState, 0.0);
+                    if (index == ComponentThumbstickClick) {
+                        thumbstickClickState = state.currentState;
+                    }
                 };
                 const auto updateAnalog = [&](Component index) {
                     XrActionStateGetInfo info = {XR_TYPE_ACTION_STATE_GET_INFO};
@@ -703,7 +721,32 @@ namespace {
                 updateButton(ComponentThumbstickTouch);
                 updateButton(ComponentThumbrestTouch);
                 if (isLeft) {
-                    updateButton(ComponentMenu);
+                    // TODO: CloudXR does not seem to send the action for /input/menu.
+                    // Instead, we use L3+R3.
+                    bool emulatedMenuClickState = false;
+
+                    // First, poll /input/menu just in case this gets fixed...
+                    XrActionStateGetInfo info = {XR_TYPE_ACTION_STATE_GET_INFO};
+                    info.action = m_actions[ComponentMenu].Get();
+                    XrActionStateBoolean state = {XR_TYPE_ACTION_STATE_BOOLEAN};
+                    CHECK_XRCMD(xrGetActionStateBoolean(m_session.Get(), &info, &state));
+                    TraceLoggingWriteTagged(local,
+                                            "ControllerDriver_UpdateInputs_UpdateBooleanComponent",
+                                            TLArg(!!state.isActive, "IsActive"),
+                                            TLArg(!!state.currentState, "State"));
+                    emulatedMenuClickState = state.currentState;
+
+                    // Now combine L3+R3.
+                    info.action = m_thumbstickAltAction.Get();
+                    CHECK_XRCMD(xrGetActionStateBoolean(m_session.Get(), &info, &state));
+                    TraceLoggingWriteTagged(local,
+                                            "ControllerDriver_UpdateInputs_UpdateBooleanComponent",
+                                            TLArg(!!state.isActive, "IsActive"),
+                                            TLArg(!!state.currentState, "State"));
+                    emulatedMenuClickState = emulatedMenuClickState || (thumbstickClickState && state.currentState);
+
+                    vr::VRDriverInput()->UpdateBooleanComponent(
+                        m_components[ComponentMenu], emulatedMenuClickState, 0.0);
                 }
                 updateButton(ComponentButton1);
                 updateButton(ComponentButton1Touch);
@@ -739,6 +782,7 @@ namespace {
         xr::ActionHandle m_actions[ComponentCount];
         xr::ActionHandle m_trackingPoseAction;
         xr::SpaceHandle m_trackingPoseSpace;
+        xr::ActionHandle m_thumbstickAltAction;
 
         DirectX::XMMATRIX m_poseOffset = DirectX::XMMatrixIdentity();
 
