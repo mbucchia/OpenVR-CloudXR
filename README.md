@@ -81,6 +81,13 @@ SteamVR will then continue booting.
 Note that you do not need at any point to set the OpenXR `ActiveRuntime` on your system: OpenVR-CloudXR directly loads
 the CloudXR OpenXR runtime built into the driver's folder.
 
+### Bundling with your CloudXR infrastructure
+
+1. Follow the guidelines of the MIT license (see `LICENSE` file).
+
+1. You may create a file named `bundled` at the root of the driver's folder in order to hide the "Start CloudXR Service"
+   options from the SteamVR Settings.
+
 ## For other developers
 
 If you wish to use OpenVR-CloudXR with an OpenXR platform other than CloudXR, you can set the `openxr_runtime_json`

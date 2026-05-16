@@ -4,6 +4,7 @@ if not exist %~s1 (
 )
 
 xcopy /q /e /y %~dp0\base %~dp0\bin\distribution\ >nul
+xcopy /y %~dp0\LICENSE %~dp0\bin\distribution\ >nul
 xcopy /q /y %~dp0\external\openvr\bin\win64\openvr_api.dll %~dp0\bin\distribution\ >nul
 xcopy /q /y %~dp0\external\openvr\bin\win64\openvr_api.dll %~dp0\bin\distribution\bin\win64\ >nul
 xcopy /q /e /y %~dp0\external\cloudxr\runtime %~dp0\bin\distribution\bin\win64\ >nul

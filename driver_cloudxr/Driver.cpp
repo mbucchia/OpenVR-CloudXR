@@ -80,7 +80,17 @@ namespace {
                           DriverVersionPatch,
                           DriverCommitHash);
 
-                vr::VRSettings()->SetBool("driver_cloudxr", "allow_service_start", true);
+                HMODULE thisDll = nullptr;
+                GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                                       GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                                   (LPCWSTR)&driver::CreateHmdDriver,
+                                   &thisDll);
+                WCHAR path[MAX_PATH]{};
+                GetModuleFileNameW(thisDll, path, MAX_PATH);
+                const auto root = std::filesystem::path(path).parent_path();
+
+                const bool isBundled = std::filesystem::exists(root.parent_path().parent_path() / "bundled");
+                vr::VRSettings()->SetBool("driver_cloudxr", "allow_service_start", !isBundled);
 
                 // Which OpenXR runtime to use?
                 std::wstring runtimeJson;
@@ -93,18 +103,10 @@ namespace {
                 std::filesystem::path runtimeDll;
                 if (runtimeJson.empty()) {
                     // With no overrides, use CloudXR shipped with the driver.
-                    HMODULE thisDll = nullptr;
-                    GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
-                                           GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                                       (LPCWSTR)&driver::CreateHmdDriver,
-                                       &thisDll);
-                    WCHAR path[MAX_PATH]{};
-                    GetModuleFileNameW(thisDll, path, MAX_PATH);
-                    const auto root = std::filesystem::path(path).parent_path();
                     runtimeDll = root / "openxr_cloudxr.dll";
 
                     // Start the service upon request.
-                    if (vr::VRSettings()->GetBool("driver_cloudxr", "start_cloudxr_service")) {
+                    if (!isBundled && vr::VRSettings()->GetBool("driver_cloudxr", "start_cloudxr_service")) {
                         try {
                             StartCloudXrService();
                         } catch (std::exception& ex) {
