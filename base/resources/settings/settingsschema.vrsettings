@@ -9,6 +9,10 @@
         "type": "bool"
       },
       {
+        "name": "/settings/driver_cloudxr/allow_fov_tangents",
+        "type": "bool"
+      },
+      {
         "name": "/settings/driver_cloudxr/use_windows_key",
         "control": "select",
         "label": "Use System/Windows Button",
