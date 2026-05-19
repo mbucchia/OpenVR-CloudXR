@@ -419,77 +419,82 @@ namespace {
                                    TLArg(pSwapTextureSetDesc->nFormat, "Format"),
                                    TLArg(pSwapTextureSetDesc->nSampleCount, "SampleCount"));
 
-            std::unique_lock lock(m_swapsetsMutex);
-            auto& swapset = m_swapsets.emplace_back(std::make_unique<TextureSwapset>());
-            swapset->pid = unPid;
+            if (pSwapTextureSetDesc->nWidth && pSwapTextureSetDesc->nHeight) {
+                std::unique_lock lock(m_swapsetsMutex);
+                auto& swapset = m_swapsets.emplace_back(std::make_unique<TextureSwapset>());
+                swapset->pid = unPid;
 
-            swapset->info = {XR_TYPE_SWAPCHAIN_CREATE_INFO};
-            swapset->info.arraySize = 1;
-            swapset->info.mipCount = 1;
-            swapset->info.faceCount = 1;
-            swapset->info.format = (int64_t)GetTypedFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat);
-            swapset->info.width = pSwapTextureSetDesc->nWidth;
-            swapset->info.height = pSwapTextureSetDesc->nHeight;
-            swapset->info.sampleCount = pSwapTextureSetDesc->nSampleCount;
-            swapset->info.usageFlags = (!IsDepthFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat)
-                                            ? XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT
-                                            : XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
-                                       XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+                swapset->info = {XR_TYPE_SWAPCHAIN_CREATE_INFO};
+                swapset->info.arraySize = 1;
+                swapset->info.mipCount = 1;
+                swapset->info.faceCount = 1;
+                swapset->info.format = (int64_t)GetTypedFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat);
+                swapset->info.width = pSwapTextureSetDesc->nWidth;
+                swapset->info.height = pSwapTextureSetDesc->nHeight;
+                swapset->info.sampleCount = pSwapTextureSetDesc->nSampleCount;
+                swapset->info.usageFlags = (!IsDepthFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat)
+                                                ? XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT
+                                                : XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
+                                           XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
 
-            CHECK_XRCMD(xrCreateSwapchain(m_session.Get(), &swapset->info, swapset->swapchain.Put(xrDestroySwapchain)));
+                CHECK_XRCMD(
+                    xrCreateSwapchain(m_session.Get(), &swapset->info, swapset->swapchain.Put(xrDestroySwapchain)));
 
-            uint32_t count = 0;
-            CHECK_XRCMD(xrEnumerateSwapchainImages(swapset->swapchain.Get(), 0, &count, nullptr));
+                uint32_t count = 0;
+                CHECK_XRCMD(xrEnumerateSwapchainImages(swapset->swapchain.Get(), 0, &count, nullptr));
 
-            std::vector<XrSwapchainImageD3D11KHR> images(3, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
-            CHECK_XRCMD(xrEnumerateSwapchainImages(
-                swapset->swapchain.Get(), count, &count, reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())));
+                std::vector<XrSwapchainImageD3D11KHR> images(3, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
+                CHECK_XRCMD(xrEnumerateSwapchainImages(swapset->swapchain.Get(),
+                                                       count,
+                                                       &count,
+                                                       reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())));
 
-            // CloudXR does not give us shareable textures. We will manage a copy.
+                // CloudXR does not give us shareable textures. We will manage a copy.
 
-            D3D11_TEXTURE2D_DESC desc{};
-            images[0].texture->GetDesc(&desc);
-            TraceLoggingWriteTagged(local,
-                                    "HmdDriver_CreateSwapTextureSet_Desc",
-                                    TLArg(desc.Width, "Width"),
-                                    TLArg(desc.Height, "Height"),
-                                    TLArg(desc.ArraySize, "ArraySize"),
-                                    TLArg(desc.MipLevels, "MipCount"),
-                                    TLArg(desc.SampleDesc.Count, "SampleCount"),
-                                    TLArg((UINT)desc.Format, "Format"),
-                                    TLArg((UINT)desc.Usage, "Usage"),
-                                    TLArg(desc.BindFlags, "BindFlags"),
-                                    TLArg(desc.CPUAccessFlags, "CPUAccessFlags"),
-                                    TLArg(desc.MiscFlags, "MiscFlags"));
+                D3D11_TEXTURE2D_DESC desc{};
+                images[0].texture->GetDesc(&desc);
+                TraceLoggingWriteTagged(local,
+                                        "HmdDriver_CreateSwapTextureSet_Desc",
+                                        TLArg(desc.Width, "Width"),
+                                        TLArg(desc.Height, "Height"),
+                                        TLArg(desc.ArraySize, "ArraySize"),
+                                        TLArg(desc.MipLevels, "MipCount"),
+                                        TLArg(desc.SampleDesc.Count, "SampleCount"),
+                                        TLArg((UINT)desc.Format, "Format"),
+                                        TLArg((UINT)desc.Usage, "Usage"),
+                                        TLArg(desc.BindFlags, "BindFlags"),
+                                        TLArg(desc.CPUAccessFlags, "CPUAccessFlags"),
+                                        TLArg(desc.MiscFlags, "MiscFlags"));
 
-            uint32_t index = 0;
-            for (const auto& image : images) {
-                swapset->swapchainTextures[index] = image.texture;
+                uint32_t index = 0;
+                for (const auto& image : images) {
+                    swapset->swapchainTextures[index] = image.texture;
 
-                if (!index) {
-                    // Create a shareable copy of the texture.
-                    desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
-                    CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
-                        &desc, nullptr, swapset->textures[index].ReleaseAndGetAddressOf()));
-                } else {
-                    // We only create one texture to save memory. Since we do a copy in Present(), there is no need for
-                    // the runtime to hold onto that texture.
-                    swapset->textures[index] = swapset->textures[0];
+                    if (!index) {
+                        // Create a shareable copy of the texture.
+                        desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+                        CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
+                            &desc, nullptr, swapset->textures[index].ReleaseAndGetAddressOf()));
+                    } else {
+                        // We only create one texture to save memory. Since we do a copy in Present(), there is no need
+                        // for the runtime to hold onto that texture.
+                        swapset->textures[index] = swapset->textures[0];
+                    }
+
+                    ComPtr<IDXGIResource1> resource;
+                    CHECK_HRCMD(swapset->textures[index]->QueryInterface(resource.ReleaseAndGetAddressOf()));
+
+                    HANDLE handle = {};
+                    CHECK_HRCMD(resource->GetSharedHandle(&handle));
+                    TraceLoggingWriteTagged(local, "HmdDriver_CreateSwapTextureSet_Texture", TLPArg(handle, "Handle"));
+                    swapset->handles[index] = handle;
+                    pOutSwapTextureSet->rSharedTextureHandles[index++] = (vr::SharedTextureHandle_t)handle;
                 }
 
-                ComPtr<IDXGIResource1> resource;
-                CHECK_HRCMD(swapset->textures[index]->QueryInterface(resource.ReleaseAndGetAddressOf()));
-
-                HANDLE handle = {};
-                CHECK_HRCMD(resource->GetSharedHandle(&handle));
-                TraceLoggingWriteTagged(local, "HmdDriver_CreateSwapTextureSet_Texture", TLPArg(handle, "Handle"));
-                swapset->handles[index] = handle;
-                pOutSwapTextureSet->rSharedTextureHandles[index++] = (vr::SharedTextureHandle_t)handle;
+                // Acquire the first image.
+                swapset->acquiredIndex = swapset->nextIndex++;
+                swapset->nextIndex = swapset->nextIndex < 3 ? swapset->nextIndex : 0;
             }
-
-            // Acquire the first image.
-            swapset->acquiredIndex = swapset->nextIndex++;
-            swapset->nextIndex = swapset->nextIndex < 3 ? swapset->nextIndex : 0;
 
             TraceLoggingWriteStop(local, "HmdDriver_CreateSwapTextureSet");
         }
