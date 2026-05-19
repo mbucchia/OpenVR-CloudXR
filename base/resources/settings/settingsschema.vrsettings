@@ -56,6 +56,36 @@
         "requires_restart": true
       },
       {
+        "name": "/settings/driver_cloudxr/horizontal_fov_tangent",
+        "control": "slider",
+        "type": "float",
+        "label": "Horizontal FOV Tangent",
+        "advanced_only": true,
+        "min": 0.4,
+        "max": 1,
+        "step": 0.01,
+        "decimals": 2,
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/allow_fov_tangents": true
+        }
+      },
+      {
+        "name": "/settings/driver_cloudxr/vertical_fov_tangent",
+        "control": "slider",
+        "type": "float",
+        "label": "Vertical FOV Tangent",
+        "advanced_only": true,
+        "min": 0.4,
+        "max": 1,
+        "step": 0.01,
+        "decimals": 2,
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/allow_fov_tangents": true
+        }
+      },
+      {
         "name": "/settings/driver_cloudxr/sharpening",
         "control": "slider",
         "type": "float",

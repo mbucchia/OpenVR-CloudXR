@@ -70,6 +70,14 @@ namespace {
                                         : "Instance does not support hand tracking");
             DriverLog(m_extensions.SupportsVisibilityMask ? "Instance supports visibility mask"
                                                           : "Instance does not support visibility mask");
+            {
+                XrViewConfigurationProperties properties = {XR_TYPE_VIEW_CONFIGURATION_PROPERTIES};
+                CHECK_XRCMD(xrGetViewConfigurationProperties(
+                    m_instance.Get(), m_system.Id, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, &properties));
+                m_isFovMutable = properties.fovMutable;
+                DriverLog(m_isFovMutable ? "Instance supports mutable FOV" : "Instance does not mutable FOV");
+                vr::VRSettings()->SetBool("driver_cloudxr", "allow_fov_tangents", m_isFovMutable);
+            }
 
             TraceLoggingWriteStop(local, "HmdDriver_Ctor");
         }
@@ -133,7 +141,17 @@ namespace {
             // TODO: Investigate if this is a good idea, let CloudXR do all the prediction.
             // vr::VRProperties()->SetBoolProperty(container, vr::Prop_DoNotApplyPrediction_Bool, true);
 
-            {
+            if (m_isFovMutable) {
+                m_horizontalFovTangent = vr::VRSettings()->GetFloat("driver_cloudxr", "horizontal_fov_tangent");
+                m_verticalFovTangent = vr::VRSettings()->GetFloat("driver_cloudxr", "vertical_fov_tangent");
+                TraceLoggingWriteTagged(local,
+                                        "HmdDriver_Activate",
+                                        TLArg(m_horizontalFovTangent, "HorizontalFovTangent"),
+                                        TLArg(m_verticalFovTangent, "VerticalFovTangent"));
+            }
+
+            const bool useFovTangent = m_horizontalFovTangent < 1 || m_verticalFovTangent < 1;
+            if (!useFovTangent) {
                 vr::CVRHiddenAreaHelpers helpers = {vr::VRPropertiesRaw()};
                 for (int eye = 0; eye < xr::StereoView::Count; eye++) {
                     // Query the visibility meshes from OpenXR.
@@ -352,8 +370,10 @@ namespace {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_GetRecommendedRenderTargetSize", TLArg(m_deviceIndex, "ObjectId"));
 
-            *pnWidth = (uint32_t)m_renderTargetWidth;
-            *pnHeight = (uint32_t)m_renderTargetHeight;
+            *pnWidth = (uint32_t)(m_renderTargetWidth * m_horizontalFovTangent);
+            *pnWidth = (*pnWidth + 3) / 4 * 4;
+            *pnHeight = (uint32_t)(m_renderTargetHeight * m_verticalFovTangent);
+            *pnHeight = (*pnHeight + 3) / 4 * 4;
 
             TraceLoggingWriteStop(local,
                                   "HmdDriver_GetRecommendedRenderTargetSize",
@@ -375,11 +395,11 @@ namespace {
                                    TLArg(m_deviceIndex, "ObjectId"),
                                    TLArg(eEye == vr::Eye_Left ? "Left" : "Right", "Eye"));
 
-            *pfLeft = tan(m_cachedEyeFov[eEye].angleLeft);
-            *pfRight = tan(m_cachedEyeFov[eEye].angleRight);
+            *pfLeft = tan(m_cachedEyeFov[eEye].angleLeft) * m_horizontalFovTangent;
+            *pfRight = tan(m_cachedEyeFov[eEye].angleRight) * m_horizontalFovTangent;
             // Top and bottom are backwards per SteamVR documentation.
-            *pfTop = tan(m_cachedEyeFov[eEye].angleDown);
-            *pfBottom = tan(m_cachedEyeFov[eEye].angleUp);
+            *pfTop = tan(m_cachedEyeFov[eEye].angleDown) * m_verticalFovTangent;
+            *pfBottom = tan(m_cachedEyeFov[eEye].angleUp) * m_verticalFovTangent;
 
             TraceLoggingWriteStop(local,
                                   "HmdDriver_GetProjectionRaw",
@@ -1507,8 +1527,11 @@ namespace {
 
         bool m_hasEyeTracking = false;
         bool m_hasHandTracking = false;
+        bool m_isFovMutable = false;
         uint32_t m_renderTargetWidth = 0;
         uint32_t m_renderTargetHeight = 0;
+        float m_horizontalFovTangent = 1.f;
+        float m_verticalFovTangent = 1.f;
         float m_refreshRate = 0;
         float m_vsyncToPhotonsTime = 0;
 
