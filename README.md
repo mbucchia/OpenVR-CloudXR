@@ -14,11 +14,16 @@ DISCLAIMER: This software is distributed as-is, without any warranties or condit
 - Immersive VR display (streaming)
 - Motion Controllers tracking
 - Motion Controllers inputs (eg: triggers, buttons...)
-- Motion Controllers haptics [NOT SUPPORTED BY CLOUDXR as of May 2026]
+- Motion Controllers haptics [NOT SUPPORTED BY CLOUDXR **]
 - Hand joints tracking
-- Eye tracking [NOT SUPPORTED BY CLOUDXR as of May 2026]
-- Visibility mask (aka "hidden area mesh") [NOT SUPPORTED BY CLOUDXR as of May 2026]
+- Eye tracking [NOT SUPPORTED BY CLOUDXR **]
+- Visibility mask (aka "hidden area mesh") [NOT SUPPORTED BY CLOUDXR **]
 - Built-in Contrast Adaptive Sharpening (CAS)
+- Configurable FOV "tangents" (reduced FOV) [NOT SUPPORTED BY CLOUDXR **]
+
+** These features are currently implemented through standard OpenXR calls, however the CloudXR runtime does not implement
+these calls today. In the future, if CloudXR implements the missing OpenXR functionality, they _should_ work without any
+changes to OpenVR-CloudXR.
 
 # Usage
 
