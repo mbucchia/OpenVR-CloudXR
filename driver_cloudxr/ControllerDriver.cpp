@@ -154,12 +154,6 @@ namespace {
                 xr::StringToPath(m_instance.Get(),
                                  m_role == vr::TrackedControllerRole_LeftHand ? "/user/hand/left" : "/user/hand/right");
 
-            // Initial pose fields.
-            m_latestPose.qWorldFromDriverRotation.w = m_latestPose.qDriverFromHeadRotation.w =
-                m_latestPose.qRotation.w = 1.f;
-            m_latestPose.deviceIsConnected = true;
-            m_latestPose.result = vr::TrackingResult_Running_OutOfRange;
-
             TraceLoggingWriteStop(local, "ControllerDriver_Ctor");
         }
 
@@ -407,8 +401,8 @@ namespace {
         }
 
         vr::DriverPose_t GetPose() override {
-            std::shared_lock lock(m_poseMutex);
-            return m_latestPose;
+            // This method is not used by SteamVR.
+            return {};
         }
 
         void DebugRequest(const char* pchRequest, char* pchResponseBuffer, uint32_t unResponseBufferSize) override {
@@ -563,11 +557,6 @@ namespace {
             TraceLoggingWriteStop(local, "ControllerDriver_SendHapticEvent");
         }
 
-        bool IsTracked() override {
-            std::shared_lock lock(m_poseMutex);
-            return m_latestPose.poseIsValid;
-        }
-
         void ApplySettingsChanges() override {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local,
@@ -656,11 +645,6 @@ namespace {
                     if (Pose::IsPoseTracked(location.locationFlags)) {
                         pose.result = vr::TrackingResult_Running_OK;
                     }
-                }
-
-                {
-                    std::unique_lock lock(m_poseMutex);
-                    m_latestPose = pose;
                 }
                 vr::VRServerDriverHost()->TrackedDevicePoseUpdated(m_deviceIndex, pose, sizeof(pose));
             }
@@ -785,9 +769,6 @@ namespace {
         xr::ActionHandle m_thumbstickAltAction;
 
         DirectX::XMMATRIX m_poseOffset = DirectX::XMMatrixIdentity();
-
-        std::shared_mutex m_poseMutex;
-        vr::DriverPose_t m_latestPose = {};
 
         bool m_useSystemButton = true;
     };

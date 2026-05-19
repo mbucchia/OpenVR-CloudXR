@@ -29,7 +29,6 @@ namespace driver {
         virtual std::vector<XrActionSuggestedBinding> CreateBindings(XrActionSet actionSet) = 0;
         virtual std::string GetInteractionProfile() const = 0;
         virtual void SendHapticEvent(const vr::VREvent_HapticVibration_t& data) = 0;
-        virtual bool IsTracked() = 0;
         virtual void ApplySettingsChanges() = 0;
         virtual void UpdateTrackingState(XrTime time) = 0;
         virtual void UpdateInputsState(XrTime time) = 0;

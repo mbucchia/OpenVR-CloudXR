@@ -71,12 +71,6 @@ namespace {
             DriverLog(m_extensions.SupportsVisibilityMask ? "Instance supports visibility mask"
                                                           : "Instance does not support visibility mask");
 
-            // Initial pose fields.
-            m_latestPose.qWorldFromDriverRotation.w = m_latestPose.qDriverFromHeadRotation.w =
-                m_latestPose.qRotation.w = 1.f;
-            m_latestPose.deviceIsConnected = true;
-            m_latestPose.result = vr::TrackingResult_Running_OutOfRange;
-
             TraceLoggingWriteStop(local, "HmdDriver_Ctor");
         }
 
@@ -336,8 +330,8 @@ namespace {
         }
 
         vr::DriverPose_t GetPose() override {
-            std::shared_lock lock(m_poseMutex);
-            return m_latestPose;
+            // This method is not used by SteamVR.
+            return {};
         }
 
         void DebugRequest(const char* pchRequest, char* pchResponseBuffer, uint32_t unResponseBufferSize) override {
@@ -1241,10 +1235,6 @@ namespace {
                     pose.result = vr::TrackingResult_Running_OK;
                 }
             }
-            {
-                std::unique_lock lock(m_poseMutex);
-                m_latestPose = pose;
-            }
             vr::VRServerDriverHost()->TrackedDevicePoseUpdated(m_deviceIndex, pose, sizeof(pose));
 
             TraceLoggingWriteStop(local, "HmdDriver_UpdateTrackingState", TLArg(pose.poseTimeOffset, "PoseTimeOffset"));
@@ -1516,9 +1506,6 @@ namespace {
         uint32_t m_renderTargetHeight = 0;
         float m_refreshRate = 0;
         float m_vsyncToPhotonsTime = 0;
-
-        std::shared_mutex m_poseMutex;
-        vr::DriverPose_t m_latestPose = {};
 
         // Reminder: C++ data members are destroyed in reverse order of declaration.
         xr::InstanceHandle& m_instance;

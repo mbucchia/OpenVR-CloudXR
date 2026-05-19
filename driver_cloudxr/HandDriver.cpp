@@ -88,12 +88,6 @@ namespace {
 
             m_serialNumber = m_role == vr::TrackedControllerRole_LeftHand ? "HAND_LEFT" : "HAND_RIGHT";
 
-            // Initial pose fields.
-            m_latestPose.qWorldFromDriverRotation.w = m_latestPose.qDriverFromHeadRotation.w =
-                m_latestPose.qRotation.w = 1.f;
-            m_latestPose.deviceIsConnected = true;
-            m_latestPose.result = vr::TrackingResult_Running_OutOfRange;
-
             TraceLoggingWriteStop(local, "HandDriver_Ctor");
         }
 
@@ -211,8 +205,8 @@ namespace {
         }
 
         vr::DriverPose_t GetPose() override {
-            std::shared_lock lock(m_poseMutex);
-            return m_latestPose;
+            // This method is not used by SteamVR.
+            return {};
         }
 
         void DebugRequest(const char* pchRequest, char* pchResponseBuffer, uint32_t unResponseBufferSize) override {
@@ -265,11 +259,6 @@ namespace {
 
         std::string GetInteractionProfile() const override {
             return "/interaction_profiles/ext/hand_interaction_ext";
-        }
-
-        bool IsTracked() override {
-            std::shared_lock lock(m_poseMutex);
-            return m_latestPose.poseIsValid;
         }
 
         void ApplySettingsChanges() override {
@@ -362,11 +351,6 @@ namespace {
                     if (Pose::IsPoseTracked(joints[k_TrackedJoint].locationFlags)) {
                         pose.result = vr::TrackingResult_Running_OK;
                     }
-                }
-
-                {
-                    std::unique_lock lock(m_poseMutex);
-                    m_latestPose = pose;
                 }
                 vr::VRServerDriverHost()->TrackedDevicePoseUpdated(m_deviceIndex, pose, sizeof(pose));
 
@@ -604,9 +588,6 @@ namespace {
         float m_indexPinch = 0.f;
 
         DirectX::XMMATRIX m_poseOffset = DirectX::XMMatrixIdentity();
-
-        std::shared_mutex m_poseMutex;
-        vr::DriverPose_t m_latestPose = {};
     };
 } // namespace
 
