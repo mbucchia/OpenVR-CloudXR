@@ -547,7 +547,7 @@ namespace {
                 XrHapticActionInfo info = {XR_TYPE_HAPTIC_ACTION_INFO};
                 info.action = m_actions[ComponentHaptics].Get();
                 XrHapticVibration vibration = {XR_TYPE_HAPTIC_VIBRATION};
-                vibration.amplitude = data.fAmplitude;
+                vibration.amplitude = std::clamp(data.fAmplitude, 0.f, 1.f);
                 vibration.frequency = data.fFrequency > 0 ? data.fFrequency : XR_FREQUENCY_UNSPECIFIED;
                 vibration.duration =
                     std::max((XrDuration)(data.fDurationSeconds / 1e9f), (XrDuration)XR_MIN_HAPTIC_DURATION);
