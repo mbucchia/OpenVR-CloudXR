@@ -108,6 +108,10 @@ namespace {
                     // Start the service upon request.
                     if (!isBundled && vr::VRSettings()->GetBool("driver_cloudxr", "start_cloudxr_service")) {
                         try {
+                            // TODO: For some reasons, setting the output folder here has no effects.
+                            const auto logDir = root.parent_path().parent_path() / "logs";
+                            CreateDirectoryW(logDir.wstring().c_str(), nullptr);
+                            SetEnvironmentVariableW(L"NV_CXR_OUTPUT_DIR", logDir.wstring().c_str());
                             StartCloudXrService();
                         } catch (std::exception& ex) {
                             DriverLog("Failed to start CloudXR service: %s", ex.what());
@@ -457,6 +461,17 @@ namespace {
                 setInt64Property("runtime-foveation-inset",
                                  vr::VRSettings()->GetInt32("driver_cloudxr", "cloudxr_foveation_inset"));
             }
+
+            const auto getStringProperty = [&](const std::string& property) {
+                size_t length = 0;
+                nv_cxr_service_get_string_property(m_service, property.c_str(), property.size(), nullptr, &length);
+                std::string value(length, 0);
+                CHECK_CXRCMD(nv_cxr_service_get_string_property(
+                    m_service, property.c_str(), property.size(), value.data(), &length));
+                return value;
+            };
+
+            DriverLog("CloudXR log folder: %s", getStringProperty("output-dir").c_str());
 
             CHECK_CXRCMD(nv_cxr_service_start(m_service));
 
