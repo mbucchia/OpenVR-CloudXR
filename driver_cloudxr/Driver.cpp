@@ -449,6 +449,7 @@ namespace {
             setStringProperty("device-profile", buffer);
             setBooleanProperty("disable-alpha", true);
             setBooleanProperty("audio-streaming", vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_audio_enable"));
+            setBooleanProperty("mic-streaming", vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_audio_enable"));
             if (vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_streaming_settings")) {
                 setBooleanProperty("immediate-compositor",
                                    !vr::VRSettings()->GetBool("driver_cloudxr", "cloudxr_video_buffering"));
