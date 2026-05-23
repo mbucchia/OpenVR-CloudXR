@@ -63,11 +63,12 @@ int main() {
 
     setStringProperty("device-profile", "auto-webrtc");
     setBooleanProperty("disable-alpha", true);
-    setBooleanProperty("audio-streaming", false);
+    setBooleanProperty("audio-streaming", true);
+    setBooleanProperty("immediate-compositor", true);
     setBooleanProperty("runtime-foveation", true);
-    //setInt64Property("runtime-foveation-unwarped-width", 2048);
-    //setInt64Property("runtime-foveation-warped-width", 1280);
-    //setInt64Property("runtime-foveation-inset", 40);
+    setInt64Property("runtime-foveation-unwarped-width", 2456);
+    setInt64Property("runtime-foveation-warped-width", 1280);
+    setInt64Property("runtime-foveation-inset", 40);
 
     result = nv_cxr_service_start(service);
     if (result) {
