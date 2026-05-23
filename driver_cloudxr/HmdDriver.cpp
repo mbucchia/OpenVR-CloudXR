@@ -75,7 +75,7 @@ namespace {
                 CHECK_XRCMD(xrGetViewConfigurationProperties(
                     m_instance.Get(), m_system.Id, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, &properties));
                 m_isFovMutable = properties.fovMutable;
-                DriverLog(m_isFovMutable ? "Instance supports mutable FOV" : "Instance does not mutable FOV");
+                DriverLog(m_isFovMutable ? "Instance supports mutable FOV" : "Instance does not support mutable FOV");
                 vr::VRSettings()->SetBool("driver_cloudxr", "allow_fov_tangents", m_isFovMutable);
             }
 
