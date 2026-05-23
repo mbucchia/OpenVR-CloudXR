@@ -63,8 +63,10 @@ using Microsoft::WRL::ComPtr;
 #include <openxr/openxr.h>
 #include <openxr/openxr_platform.h>
 #include <openxr/openxr_loader_negotiation.h>
+#include <openxr/XR_NV_opaque_data_channel.h>
 
 #define ENABLE_GLOBAL_XR_DISPATCH_TABLE
+extern PFN_xrGetInstanceProcAddr xrGetInstanceProcAddr;
 #define NO_THROW_HANDLER
 #include <XrUtility/XrDispatchTable.h>
 #include <XrUtility/XrEnumerate.h>
@@ -79,3 +81,5 @@ using Microsoft::WRL::ComPtr;
 #include <SampleShared/XrSystemContext.h>
 
 #include <cJSON.h>
+
+#include <krvr/OpaqueChannel.h>

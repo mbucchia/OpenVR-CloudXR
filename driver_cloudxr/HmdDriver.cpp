@@ -79,6 +79,12 @@ namespace {
                 vr::VRSettings()->SetBool("driver_cloudxr", "allow_fov_tangents", m_isFovMutable);
             }
 
+            // KRVR specific: Open the opaque side-channel used for haptic packets. Fails soft if the extension isn't
+            // available.
+            if (krvr::OpaqueChannel::Get().Init(m_instance.Get(), m_system.Id, xrGetInstanceProcAddr)) {
+                DriverLog("Using KRVR haptics channel");
+            }
+
             TraceLoggingWriteStop(local, "HmdDriver_Ctor");
         }
 

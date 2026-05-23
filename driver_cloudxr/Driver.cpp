@@ -31,6 +31,8 @@
 
 using namespace util;
 
+PFN_xrGetInstanceProcAddr xrGetInstanceProcAddr = nullptr;
+
 namespace {
     std::unique_ptr<vr::IServerTrackedDeviceProvider> thisDriver;
     std::unique_ptr<driver::IHmdDriver> hmdDriver;
@@ -41,7 +43,8 @@ namespace {
         XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME,
         XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME,
         XR_EXT_HAND_TRACKING_EXTENSION_NAME,
-        XR_EXT_HAND_INTERACTION_EXTENSION_NAME};
+        XR_EXT_HAND_INTERACTION_EXTENSION_NAME,
+        XR_NV_OPAQUE_DATA_CHANNEL_EXTENSION_NAME};
     const std::vector<XrViewConfigurationType> k_SupportedViewConfigurationTypes = {
         XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO,
     };
@@ -254,6 +257,7 @@ namespace {
 
                         // Populate the rest of the function pointers.
                         xr::g_dispatchTable.Initialize(instance, runtimeRequest.getInstanceProcAddr);
+                        xrGetInstanceProcAddr = runtimeRequest.getInstanceProcAddr;
 
                         // Don't forget to attach our smart handle now that xrDestroyInstance is resolved!
                         *m_instance.Put(xrDestroyInstance) = instance;

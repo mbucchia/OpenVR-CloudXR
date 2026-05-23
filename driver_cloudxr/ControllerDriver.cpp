@@ -552,6 +552,16 @@ namespace {
                 vibration.duration =
                     std::max((XrDuration)(data.fDurationSeconds / 1e9f), (XrDuration)XR_MIN_HAPTIC_DURATION);
                 CHECK_XRCMD(xrApplyHapticFeedback(m_session.Get(), &info, (XrHapticBaseHeader*)&vibration));
+
+                if (krvr::OpaqueChannel::Get().IsConnected()) {
+                    // KRVR specific: Also ship the haptic over the opaque side-channel - clients that subscribe to the
+                    // UUID receive the HapticPacket and deliver the vibration locally. This is the actually-working
+                    // path today.
+                    const uint8_t handByte = (m_role == vr::TrackedControllerRole_LeftHand) ? 0 : 1;
+                    const uint64_t durationNs =
+                        (data.fDurationSeconds > 0.f) ? (uint64_t)(data.fDurationSeconds * 1e9f) : 0ull;
+                    krvr::OpaqueChannel::Get().SendHaptic(handByte, durationNs, data.fFrequency, data.fAmplitude);
+                }
             }
 
             TraceLoggingWriteStop(local, "ControllerDriver_SendHapticEvent");
