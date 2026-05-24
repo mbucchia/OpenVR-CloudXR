@@ -29,7 +29,6 @@ cbuffer config : register(b0)
 };
 
 Texture2D<float4> sourceTexture : register(t0);
-RWTexture2D<float4> sharpenedTexture : register(u0);
 
 #define A_GPU 1
 #define A_HLSL 1
@@ -38,7 +37,6 @@ RWTexture2D<float4> sharpenedTexture : register(u0);
 
 AF3 CasLoad(ASU2 p)
 {
-    p += topLeft.xy;
     return sourceTexture.Load(int3(p, 0)).rgb;
 }
 
@@ -48,37 +46,13 @@ void CasInput(inout AF1 r, inout AF1 g, inout AF1 b)
 
 #include <ffx-cas/ffx_cas.h>
 
-void CasStore(AU2 p, AF3 c)
+float4 main(float4 position : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_TARGET
 {
-#ifdef SRGB
-    // From https://github.com/Microsoft/DirectX-Graphics-Samples/blob/master/MiniEngine/Core/Shaders/ColorSpaceUtility.hlsli
-    c = c < 0.0031308 ? 12.92 * c : 1.13005 * sqrt(c - 0.00228) - 0.13448 * c + 0.005719;
-#endif
-
-    // Discard alpha, which is OK since we only sharpen the bottom layer.
-    sharpenedTexture[p] = AF4(c, 1);
-}
-
-[numthreads(64, 1, 1)]
-void main(uint3 tid : SV_GroupThreadID, uint3 wgid : SV_GroupID)
-{
-    // Do remapping of local xy in workgroup for a more PS-like swizzle pattern.
-    AU2 gxy = ARmp8x8(tid.x) + AU2(wgid.x << 4u, wgid.y << 4u);
-
     AF3 c;
 
-    CasFilter(c.r, c.g, c.b, gxy, const0, const1, true /* noScaling */);
-    CasStore(gxy, c);
-    gxy.x += 8u;
+    uint2 xy = texcoord * extent;
+    CasFilter(c.r, c.g, c.b, xy, const0, const1, true /* noScaling */);
 
-    CasFilter(c.r, c.g, c.b, gxy, const0, const1, true /* noScaling */);
-    CasStore(gxy, c);
-    gxy.y += 8u;
-
-    CasFilter(c.r, c.g, c.b, gxy, const0, const1, true /* noScaling */);
-    CasStore(gxy, c);
-    gxy.x -= 8u;
-
-    CasFilter(c.r, c.g, c.b, gxy, const0, const1, true /* noScaling */);
-    CasStore(gxy, c);
+    // Discard alpha, which is OK since we only sharpen the bottom layer.
+    return float4(c, 1.f);
 }

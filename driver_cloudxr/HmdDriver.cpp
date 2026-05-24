@@ -33,7 +33,9 @@
 #include <ffx-cas/ffx_a.h>
 #include <ffx-cas/ffx_cas.h>
 
+#include "FullscreenQuadVS.h"
 #include "SharpeningCS.h"
+#include "SharpeningPS.h"
 #include "SharpeningSrgbCS.h"
 
 using namespace driver;
@@ -49,10 +51,11 @@ namespace {
         ComponentCount,
     };
 
-    struct SharpenCSConstants {
+    struct SharpenConstants {
         alignas(16) uint32_t const0[4];
         alignas(16) uint32_t const1[4];
         alignas(8) XrOffset2Di topLeft;
+        alignas(8) XrExtent2Di extent;
     };
 
     class HmdDriver : public IHmdDriver, public vr::IVRDisplayComponent, public vr::IVRDriverDirectModeComponent {
@@ -463,8 +466,15 @@ namespace {
                                                 : XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
                                            XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
 
-                CHECK_XRCMD(
-                    xrCreateSwapchain(m_session.Get(), &swapset->info, swapset->swapchain.Put(xrDestroySwapchain)));
+                // Most runtimes are capable of creating UAV-compatible swapchains, even with SRGB formats. However
+                // CloudXR is not. Try with a fallback, and sharpening needs to be run with a Pixel Shader.
+                swapset->info.usageFlags |= XR_SWAPCHAIN_USAGE_UNORDERED_ACCESS_BIT;
+                if (XR_FAILED(xrCreateSwapchain(
+                        m_session.Get(), &swapset->info, swapset->swapchain.Put(xrDestroySwapchain)))) {
+                    swapset->info.usageFlags &= ~XR_SWAPCHAIN_USAGE_UNORDERED_ACCESS_BIT;
+                    CHECK_XRCMD(
+                        xrCreateSwapchain(m_session.Get(), &swapset->info, swapset->swapchain.Put(xrDestroySwapchain)));
+                }
 
                 uint32_t count = 0;
                 CHECK_XRCMD(xrEnumerateSwapchainImages(swapset->swapchain.Get(), 0, &count, nullptr));
@@ -712,122 +722,7 @@ namespace {
             }
 
             // Release all swapchain images from this frame.
-            {
-                std::shared_lock lock(m_swapsetsMutex);
-
-                for (auto& it : m_swapsets) {
-                    if (it->acquiredIndex) {
-                        auto& swapset = *it;
-
-                        // Flush the render target to the swapchain.
-                        uint32_t acquiredIndex;
-                        CHECK_XRCMD(xrAcquireSwapchainImage(swapset.swapchain.Get(), nullptr, &acquiredIndex));
-
-                        XrSwapchainImageWaitInfo waitInfo = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
-                        waitInfo.timeout = XR_INFINITE_DURATION;
-                        CHECK_XRCMD(xrWaitSwapchainImage(swapset.swapchain.Get(), &waitInfo));
-
-                        ID3D11Texture2D* inputTexture = swapset.textures[*swapset.acquiredIndex].Get();
-
-                        if (swapset.layerIndex == 0 && m_sharpening > 0) {
-                            // Apply sharpening.
-                            m_d3d11Context->CSSetShader(IsSrgbFormat((DXGI_FORMAT)swapset.info.format)
-                                                            ? m_sharpeningShader[1].Get()
-                                                            : m_sharpeningShader[0].Get(),
-                                                        nullptr,
-                                                        0);
-                            {
-                                SharpenCSConstants constants = {};
-                                constants.topLeft = swapset.layerRect.offset;
-
-                                CasSetup(constants.const0,
-                                         constants.const1,
-                                         m_sharpening,
-                                         (AF1)swapset.layerRect.extent.width,
-                                         (AF1)swapset.layerRect.extent.height,
-                                         (AF1)swapset.layerRect.extent.width,
-                                         (AF1)swapset.layerRect.extent.height);
-
-                                m_d3d11Context->UpdateSubresource(
-                                    m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
-                                m_d3d11Context->CSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
-                            }
-                            ComPtr<ID3D11ShaderResourceView> srv;
-                            {
-                                D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
-                                desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-                                desc.Format = (DXGI_FORMAT)swapset.info.format;
-                                desc.Texture2D.MipLevels = 1;
-                                CHECK_HRCMD(m_d3d11Device->CreateShaderResourceView(
-                                    swapset.textures[*swapset.acquiredIndex].Get(),
-                                    &desc,
-                                    srv.ReleaseAndGetAddressOf()));
-                            }
-                            m_d3d11Context->CSSetShaderResources(0, 1, srv.GetAddressOf());
-                            ComPtr<ID3D11UnorderedAccessView> uav;
-                            {
-                                // TODO: Migrate to a pixel shader so we can directly render to the swapchain texture.
-                                {
-                                    D3D11_TEXTURE2D_DESC desc{};
-                                    swapset.swapchainTextures[0]->GetDesc(&desc);
-                                    desc.Format = GetUavFormat(desc.Format);
-                                    desc.BindFlags = D3D11_BIND_UNORDERED_ACCESS;
-                                    desc.MiscFlags = 0;
-                                    CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
-                                        &desc, nullptr, swapset.tempTexture.ReleaseAndGetAddressOf()));
-                                }
-                                D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {};
-                                desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
-                                desc.Format = GetUavFormat((DXGI_FORMAT)swapset.info.format);
-                                CHECK_HRCMD(m_d3d11Device->CreateUnorderedAccessView(
-                                    swapset.tempTexture.Get(), &desc, uav.ReleaseAndGetAddressOf()));
-                            }
-                            m_d3d11Context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
-
-                            const uint32_t blockWidth = 16;
-                            const uint32_t blockHeight = 16;
-                            m_d3d11Context->Dispatch(
-                                ((swapset.layerRect.extent.width + blockWidth - 1) / blockWidth),
-                                ((swapset.layerRect.extent.height + blockHeight - 1) / blockHeight),
-                                1);
-
-                            // Unbind all resources to avoid D3D validation errors.
-                            {
-                                m_d3d11Context->CSSetShader(nullptr, nullptr, 0);
-                                ID3D11Buffer* nullCbv[] = {nullptr};
-                                m_d3d11Context->CSSetConstantBuffers(0, 1, nullCbv);
-                                ID3D11ShaderResourceView* nullSrv[] = {nullptr};
-                                m_d3d11Context->CSSetShaderResources(0, 1, nullSrv);
-                                ID3D11UnorderedAccessView* nullUav[] = {nullptr};
-                                m_d3d11Context->CSSetUnorderedAccessViews(0, 1, nullUav, nullptr);
-                            }
-
-                            inputTexture = swapset.tempTexture.Get();
-                        }
-
-                        {
-                            // Simply copy.
-                            D3D11_BOX box = {};
-                            box.left = swapset.layerRect.offset.x;
-                            box.top = swapset.layerRect.offset.y;
-                            box.right = box.left + swapset.layerRect.extent.width;
-                            box.bottom = box.top + swapset.layerRect.extent.height;
-                            box.back = 1;
-                            m_d3d11Context->CopySubresourceRegion(swapset.swapchainTextures[acquiredIndex].Get(),
-                                                                  0,
-                                                                  swapset.layerRect.offset.x,
-                                                                  swapset.layerRect.offset.y,
-                                                                  0,
-                                                                  inputTexture,
-                                                                  0,
-                                                                  &box);
-                        }
-
-                        CHECK_XRCMD(xrReleaseSwapchainImage(swapset.swapchain.Get(), nullptr));
-                        swapset.acquiredIndex.reset();
-                    }
-                }
-            }
+            ProcessFrameSwapchains();
 
             if (IsTraceEnabled()) {
                 m_gpuTimerCopy[m_currentTimerIndex]->stop();
@@ -865,6 +760,11 @@ namespace {
 
             m_frameLayers.clear();
 
+            // When using RenderDoc, signal a frame through the dummy swapchain.
+            if (m_dxgiSwapchain) {
+                m_dxgiSwapchain->Present(0, 0);
+            }
+
             TraceLoggingWriteStop(
                 local, "HmdDriver_Present", TLArg(m_frameTimes.size(), "Fps"), TLArg(lastCopyTime, "LastCopyTimeUs"));
         }
@@ -879,7 +779,12 @@ namespace {
                     m_d3d11Context->Flush();
 
                     if (m_syncMutex) {
-                        CHECK_HRCMD(m_syncMutex->ReleaseSync(0));
+                        if (!m_dxgiSwapchain) {
+                            CHECK_HRCMD(m_syncMutex->ReleaseSync(0));
+                        } else {
+                            // When using RenderDoc, this call doesn't make the debugger happy. Forego error checks.
+                            m_syncMutex->ReleaseSync(0);
+                        }
                         m_syncMutex = nullptr;
                     }
                 });
@@ -1311,6 +1216,157 @@ namespace {
         }
 
       private:
+        void ProcessFrameSwapchains() {
+            TraceLocalActivity(local);
+            TraceLoggingWriteStart(local, "HmdDriver_ProcessFrameSwapchains", TLArg(m_deviceIndex, "ObjectId"));
+
+            std::shared_lock lock(m_swapsetsMutex);
+
+            for (auto& it : m_swapsets) {
+                if (it->acquiredIndex) {
+                    auto& swapset = *it;
+
+                    // Flush the render target to the swapchain.
+                    uint32_t acquiredIndex;
+                    CHECK_XRCMD(xrAcquireSwapchainImage(swapset.swapchain.Get(), nullptr, &acquiredIndex));
+
+                    XrSwapchainImageWaitInfo waitInfo = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+                    waitInfo.timeout = XR_INFINITE_DURATION;
+                    CHECK_XRCMD(xrWaitSwapchainImage(swapset.swapchain.Get(), &waitInfo));
+
+                    ID3D11Texture2D* inputTexture = swapset.textures[*swapset.acquiredIndex].Get();
+                    ID3D11Texture2D* swapchainTexture = swapset.swapchainTextures[*swapset.acquiredIndex].Get();
+
+                    if (swapset.layerIndex == 0 && m_sharpening > 0) {
+                        // Setup common resources for sharpening.
+                        SharpenConstants constants = {};
+                        constants.topLeft = swapset.layerRect.offset;
+                        constants.extent = swapset.layerRect.extent;
+
+                        CasSetup(constants.const0,
+                                 constants.const1,
+                                 m_sharpening,
+                                 (AF1)swapset.layerRect.extent.width,
+                                 (AF1)swapset.layerRect.extent.height,
+                                 (AF1)swapset.layerRect.extent.width,
+                                 (AF1)swapset.layerRect.extent.height);
+
+                        m_d3d11Context->UpdateSubresource(m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
+
+                        ComPtr<ID3D11ShaderResourceView> srv;
+                        {
+                            D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
+                            desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+                            desc.Format = (DXGI_FORMAT)swapset.info.format;
+                            desc.Texture2D.MipLevels = 1;
+                            CHECK_HRCMD(m_d3d11Device->CreateShaderResourceView(
+                                inputTexture, &desc, srv.ReleaseAndGetAddressOf()));
+                        }
+
+                        if (swapset.info.usageFlags & XR_SWAPCHAIN_USAGE_UNORDERED_ACCESS_BIT) {
+                            // Apply sharpening via Compute Shader.
+                            TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_SharpenCS");
+                            m_d3d11Context->CSSetShader(IsSrgbFormat((DXGI_FORMAT)swapset.info.format)
+                                                            ? m_sharpeningShader[1].Get()
+                                                            : m_sharpeningShader[0].Get(),
+                                                        nullptr,
+                                                        0);
+                            m_d3d11Context->CSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                            m_d3d11Context->CSSetShaderResources(0, 1, srv.GetAddressOf());
+                            ComPtr<ID3D11UnorderedAccessView> uav;
+                            {
+                                D3D11_UNORDERED_ACCESS_VIEW_DESC desc = {};
+                                desc.ViewDimension = D3D11_UAV_DIMENSION_TEXTURE2D;
+                                desc.Format = GetUavFormat((DXGI_FORMAT)swapset.info.format);
+                                CHECK_HRCMD(m_d3d11Device->CreateUnorderedAccessView(
+                                    swapchainTexture, &desc, uav.ReleaseAndGetAddressOf()));
+                            }
+                            m_d3d11Context->CSSetUnorderedAccessViews(0, 1, uav.GetAddressOf(), nullptr);
+
+                            const uint32_t blockWidth = 16;
+                            const uint32_t blockHeight = 16;
+                            m_d3d11Context->Dispatch(
+                                ((swapset.layerRect.extent.width + blockWidth - 1) / blockWidth),
+                                ((swapset.layerRect.extent.height + blockHeight - 1) / blockHeight),
+                                1);
+
+                            // Unbind all resources to avoid D3D validation errors.
+                            {
+                                m_d3d11Context->CSSetShader(nullptr, nullptr, 0);
+                                ID3D11Buffer* nullCbv[] = {nullptr};
+                                m_d3d11Context->CSSetConstantBuffers(0, 1, nullCbv);
+                                ID3D11ShaderResourceView* nullSrv[] = {nullptr};
+                                m_d3d11Context->CSSetShaderResources(0, 1, nullSrv);
+                                ID3D11UnorderedAccessView* nullUav[] = {nullptr};
+                                m_d3d11Context->CSSetUnorderedAccessViews(0, 1, nullUav, nullptr);
+                            }
+                        } else {
+                            // Apply sharpening via Pixel Shader.
+                            TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_SharpenPS");
+                            m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+                            m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
+                            m_d3d11Context->PSSetShader(m_sharpeningShaderAlt.Get(), nullptr, 0);
+                            m_d3d11Context->PSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                            m_d3d11Context->PSSetShaderResources(0, 1, srv.GetAddressOf());
+                            ComPtr<ID3D11RenderTargetView> rtv;
+                            {
+                                D3D11_RENDER_TARGET_VIEW_DESC desc = {};
+                                desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+                                desc.Format = (DXGI_FORMAT)swapset.info.format;
+                                CHECK_HRCMD(m_d3d11Device->CreateRenderTargetView(
+                                    swapchainTexture, &desc, rtv.ReleaseAndGetAddressOf()));
+                            }
+                            m_d3d11Context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+                            D3D11_VIEWPORT viewport{};
+                            viewport.TopLeftX = (float)swapset.layerRect.offset.x;
+                            viewport.TopLeftY = (float)swapset.layerRect.offset.y;
+                            viewport.Width = (float)swapset.layerRect.extent.width;
+                            viewport.Height = (float)swapset.layerRect.extent.height;
+                            viewport.MaxDepth = 1.f;
+                            m_d3d11Context->RSSetViewports(1, &viewport);
+                            m_d3d11Context->OMSetDepthStencilState(m_noDepthTest.Get(), 0xff);
+
+                            m_d3d11Context->Draw(3, 0);
+
+                            // Unbind all resources to avoid D3D validation errors.
+                            {
+                                m_d3d11Context->VSSetShader(nullptr, nullptr, 0);
+                                m_d3d11Context->PSSetShader(nullptr, nullptr, 0);
+                                ID3D11Buffer* nullCbv[] = {nullptr};
+                                m_d3d11Context->PSSetConstantBuffers(0, 1, nullCbv);
+                                ID3D11ShaderResourceView* nullSrv[] = {nullptr};
+                                m_d3d11Context->PSSetShaderResources(0, 1, nullSrv);
+                                ID3D11RenderTargetView* nullRtv[] = {nullptr};
+                                m_d3d11Context->OMSetRenderTargets(1, nullRtv, nullptr);
+                            }
+                        }
+                    } else {
+                        // Simply copy.
+                        TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_Copy");
+                        D3D11_BOX box = {};
+                        box.left = swapset.layerRect.offset.x;
+                        box.top = swapset.layerRect.offset.y;
+                        box.right = box.left + swapset.layerRect.extent.width;
+                        box.bottom = box.top + swapset.layerRect.extent.height;
+                        box.back = 1;
+                        m_d3d11Context->CopySubresourceRegion(swapchainTexture,
+                                                              0,
+                                                              swapset.layerRect.offset.x,
+                                                              swapset.layerRect.offset.y,
+                                                              0,
+                                                              inputTexture,
+                                                              0,
+                                                              &box);
+                    }
+
+                    CHECK_XRCMD(xrReleaseSwapchainImage(swapset.swapchain.Get(), nullptr));
+                    swapset.acquiredIndex.reset();
+                }
+            }
+
+            TraceLoggingWriteStop(local, "HmdDriver_ProcessFrameSwapchains");
+        }
+
         void InitializeSession() {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_InitializeSession", TLArg(m_deviceIndex, "ObjectId"));
@@ -1346,6 +1402,7 @@ namespace {
 
             const D3D_FEATURE_LEVEL featureLevel = graphicsRequirements.minFeatureLevel;
             ComPtr<ID3D11Device> device;
+            ComPtr<ID3D11DeviceContext> context;
             CHECK_HRCMD(D3D11CreateDevice(getAdapterByLuid(graphicsRequirements.adapterLuid).Get(),
                                           D3D_DRIVER_TYPE_UNKNOWN,
                                           0,
@@ -1355,12 +1412,13 @@ namespace {
                                           D3D11_SDK_VERSION,
                                           device.ReleaseAndGetAddressOf(),
                                           nullptr,
-                                          m_d3d11Context.ReleaseAndGetAddressOf()));
+                                          context.ReleaseAndGetAddressOf()));
 
             XrGraphicsBindingD3D11KHR graphicsBindings = {XR_TYPE_GRAPHICS_BINDING_D3D11_KHR};
             graphicsBindings.device = device.Get();
 
             CHECK_HRCMD(device->QueryInterface(IID_PPV_ARGS(m_d3d11Device.ReleaseAndGetAddressOf())));
+            CHECK_HRCMD(context->QueryInterface(IID_PPV_ARGS(m_d3d11Context.ReleaseAndGetAddressOf())));
             sessionCreateInfo.next = &graphicsBindings;
 
             CHECK_XRCMD(xrCreateSession(m_instance.Get(), &sessionCreateInfo, m_session.Put(xrDestroySession)));
@@ -1374,18 +1432,58 @@ namespace {
                                                                sizeof(k_SharpeningSrgbCS),
                                                                nullptr,
                                                                m_sharpeningShader[1].ReleaseAndGetAddressOf()));
+                CHECK_HRCMD(m_d3d11Device->CreateVertexShader(k_FullscreenQuadVS,
+                                                              sizeof(k_FullscreenQuadVS),
+                                                              nullptr,
+                                                              m_fullscreenQuadShader.ReleaseAndGetAddressOf()));
+                CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
+                    k_SharpeningPS, sizeof(k_SharpeningPS), nullptr, m_sharpeningShaderAlt.ReleaseAndGetAddressOf()));
 
-                D3D11_BUFFER_DESC desc{};
-                desc.ByteWidth = (UINT)((sizeof(SharpenCSConstants) + 15) / 16) * 16;
-                desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
-                desc.Usage = D3D11_USAGE_DEFAULT;
-
-                CHECK_HRCMD(
-                    m_d3d11Device->CreateBuffer(&desc, nullptr, m_sharpeningConstants.ReleaseAndGetAddressOf()));
+                {
+                    D3D11_BUFFER_DESC desc{};
+                    desc.ByteWidth = (UINT)((sizeof(SharpenConstants) + 15) / 16) * 16;
+                    desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+                    desc.Usage = D3D11_USAGE_DEFAULT;
+                    CHECK_HRCMD(
+                        m_d3d11Device->CreateBuffer(&desc, nullptr, m_sharpeningConstants.ReleaseAndGetAddressOf()));
+                }
+                {
+                    D3D11_DEPTH_STENCIL_DESC desc{};
+                    CHECK_HRCMD(m_d3d11Device->CreateDepthStencilState(&desc, m_noDepthTest.ReleaseAndGetAddressOf()));
+                }
             }
 
             for (uint32_t i = 0; i < k_numGpuTimers; i++) {
                 m_gpuTimerCopy[i] = std::make_unique<D3D11GpuTimer>(device.Get(), m_d3d11Context.Get());
+            }
+
+            // If RenderDoc is loaded, then create a DXGI swapchain to signal events. Otherwise RenderDoc will
+            // not see our OpenXR frames.
+            HMODULE renderdocModule;
+            if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, "renderdoc.dll", &renderdocModule) &&
+                renderdocModule) {
+                DriverLog("Detected RenderDoc\n");
+
+                DXGI_SWAP_CHAIN_DESC1 swapchainDesc{};
+                swapchainDesc.Width = 8;
+                swapchainDesc.Height = 8;
+                swapchainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+                swapchainDesc.SampleDesc.Count = 1;
+                swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+                swapchainDesc.BufferCount = 3;
+                swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+                swapchainDesc.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+
+                ComPtr<IDXGIDevice> dxgiDevice;
+                CHECK_HRCMD(m_d3d11Device->QueryInterface(IID_PPV_ARGS(dxgiDevice.ReleaseAndGetAddressOf())));
+
+                ComPtr<IDXGIAdapter> dxgiAdapter;
+                CHECK_HRCMD(dxgiDevice->GetAdapter(dxgiAdapter.ReleaseAndGetAddressOf()));
+
+                ComPtr<IDXGIFactory2> dxgiFactory;
+                CHECK_HRCMD(dxgiAdapter->GetParent(IID_PPV_ARGS(dxgiFactory.ReleaseAndGetAddressOf())));
+                CHECK_HRCMD(dxgiFactory->CreateSwapChainForComposition(
+                    dxgiDevice.Get(), &swapchainDesc, nullptr, m_dxgiSwapchain.ReleaseAndGetAddressOf()));
             }
 
             // Retrieve recommended render resolution.
@@ -1516,7 +1614,6 @@ namespace {
 
             std::array<ComPtr<ID3D11Texture2D>, 3> textures;
             std::array<ComPtr<ID3D11Texture2D>, 3> swapchainTextures;
-            ComPtr<ID3D11Texture2D> tempTexture;
 
             uint32_t layerIndex = 0;
             XrRect2Di layerRect = {};
@@ -1548,9 +1645,13 @@ namespace {
         xr::SessionHandle m_session;
         LUID m_adapterLuid = {};
         ComPtr<ID3D11Device1> m_d3d11Device;
-        ComPtr<ID3D11DeviceContext> m_d3d11Context;
+        ComPtr<ID3D11DeviceContext1> m_d3d11Context;
         ComPtr<ID3D11ComputeShader> m_sharpeningShader[2];
+        ComPtr<ID3D11VertexShader> m_fullscreenQuadShader;
+        ComPtr<ID3D11PixelShader> m_sharpeningShaderAlt;
         ComPtr<ID3D11Buffer> m_sharpeningConstants;
+        ComPtr<ID3D11DepthStencilState> m_noDepthTest;
+        ComPtr<IDXGISwapChain1> m_dxgiSwapchain;
 
         xr::ActionSetHandle m_actionSet;
         xr::ActionHandle m_eyeGazeAction;
