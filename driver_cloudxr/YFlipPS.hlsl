@@ -20,44 +20,10 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-cbuffer config : register(b0)
+SamplerState sourceSampler : register(s0);
+Texture2D sourceTexture : register(t0);
+
+float4 main(in float4 position : SV_POSITION, in float2 texcoord : TEXCOORD0) : SV_TARGET
 {
-    uint4 const0; // CAS
-    uint4 const1; // CAS
-    uint2 topLeft;
-    uint2 extent;
-    uint yflip;
-};
-
-Texture2D<float4> sourceTexture : register(t0);
-
-#define A_GPU 1
-#define A_HLSL 1
-
-#include <ffx-cas/ffx_a.h>
-
-AF3 CasLoad(ASU2 p)
-{
-    if (yflip)
-    {
-        p.y = extent.y - p.y;
-    }
-    return sourceTexture.Load(int3(p, 0)).rgb;
-}
-
-void CasInput(inout AF1 r, inout AF1 g, inout AF1 b)
-{
-}
-
-#include <ffx-cas/ffx_cas.h>
-
-float4 main(float4 position : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_TARGET
-{
-    AF3 c;
-
-    uint2 xy = texcoord * extent;
-    CasFilter(c.r, c.g, c.b, xy, const0, const1, true /* noScaling */);
-
-    // Discard alpha, which is OK since we only sharpen the bottom layer.
-    return float4(c, 1.f);
+    return sourceTexture.Sample(sourceSampler, float2(texcoord.x, 1 - texcoord.y));
 }

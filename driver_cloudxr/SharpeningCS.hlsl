@@ -26,6 +26,7 @@ cbuffer config : register(b0)
     uint4 const1; // CAS
     uint2 topLeft;
     uint2 extent;
+    uint yflip;
 };
 
 Texture2D<float4> sourceTexture : register(t0);
@@ -39,6 +40,10 @@ RWTexture2D<float4> sharpenedTexture : register(u0);
 AF3 CasLoad(ASU2 p)
 {
     p += topLeft.xy;
+    if (yflip)
+    {
+        p.y = extent.y - p.y;
+    }
     return sourceTexture.Load(int3(p, 0)).rgb;
 }
 

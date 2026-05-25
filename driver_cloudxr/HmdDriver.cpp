@@ -34,6 +34,7 @@
 #include <ffx-cas/ffx_cas.h>
 
 #include "FullscreenQuadVS.h"
+#include "YFlipPS.h"
 #include "SharpeningCS.h"
 #include "SharpeningPS.h"
 #include "SharpeningSrgbCS.h"
@@ -56,6 +57,7 @@ namespace {
         alignas(16) uint32_t const1[4];
         alignas(8) XrOffset2Di topLeft;
         alignas(8) XrExtent2Di extent;
+        alignas(4) bool yFlip;
     };
 
     class HmdDriver : public IHmdDriver, public vr::IVRDisplayComponent, public vr::IVRDriverDirectModeComponent {
@@ -634,22 +636,32 @@ namespace {
                         (*it)->handles[2] == (HANDLE)perEye[eye].hTexture) {
                         auto& swapset = *it;
                         layer.views[eye].subImage.swapchain = swapset->swapchain.Get();
+
+                        // Special case: handle Y-flip for certain layers.
+                        auto bounds = perEye[eye].bounds;
+                        if (bounds.vMin > bounds.vMax) {
+                            std::swap(bounds.vMin, bounds.vMax);
+                            if (m_isFovMutable) {
+                                std::swap(layer.views[eye].fov.angleUp, layer.views[eye].fov.angleDown);
+                            } else {
+                                swapset->doYFlip = true;
+                            }
+                        }
+
                         layer.views[eye].subImage.imageRect = swapset->layerRect = {
                             {
-                                std::clamp((int32_t)std::round(perEye[eye].bounds.uMin * swapset->info.width),
+                                std::clamp((int32_t)std::round(bounds.uMin * swapset->info.width),
                                            0,
                                            (int32_t)swapset->info.width),
-                                std::clamp((int32_t)std::round(perEye[eye].bounds.vMin * swapset->info.height),
+                                std::clamp((int32_t)std::round(bounds.vMin * swapset->info.height),
                                            0,
                                            (int32_t)swapset->info.height),
                             },
                             {
-                                std::clamp((int32_t)std::round((perEye[eye].bounds.uMax - perEye[eye].bounds.uMin) *
-                                                               swapset->info.width),
+                                std::clamp((int32_t)std::round((bounds.uMax - bounds.uMin) * swapset->info.width),
                                            0,
                                            (int32_t)swapset->info.width),
-                                std::clamp((int32_t)std::round((perEye[eye].bounds.vMax - perEye[eye].bounds.vMin) *
-                                                               swapset->info.height),
+                                std::clamp((int32_t)std::round((bounds.vMax - bounds.vMin) * swapset->info.height),
                                            0,
                                            (int32_t)swapset->info.height),
 
@@ -1242,6 +1254,7 @@ namespace {
                         SharpenConstants constants = {};
                         constants.topLeft = swapset.layerRect.offset;
                         constants.extent = swapset.layerRect.extent;
+                        constants.yFlip = swapset.doYFlip;
 
                         CasSetup(constants.const0,
                                  constants.const1,
@@ -1265,6 +1278,7 @@ namespace {
 
                         if (swapset.info.usageFlags & XR_SWAPCHAIN_USAGE_UNORDERED_ACCESS_BIT) {
                             // Apply sharpening via Compute Shader.
+                            // Also flip if needed.
                             TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_SharpenCS");
                             m_d3d11Context->CSSetShader(IsSrgbFormat((DXGI_FORMAT)swapset.info.format)
                                                             ? m_sharpeningShader[1].Get()
@@ -1302,6 +1316,7 @@ namespace {
                             }
                         } else {
                             // Apply sharpening via Pixel Shader.
+                            // Also flip if needed.
                             TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_SharpenPS");
                             m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
                             m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
@@ -1340,6 +1355,54 @@ namespace {
                                 m_d3d11Context->OMSetRenderTargets(1, nullRtv, nullptr);
                             }
                         }
+                    } else if (swapset.doYFlip) {
+                        // Flip via Pixel Shader.
+                        TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_FlipPS");
+                        m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+                        m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
+                        m_d3d11Context->PSSetShader(m_yFlipShader.Get(), nullptr, 0);
+                        ComPtr<ID3D11ShaderResourceView> srv;
+                        {
+                            D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
+                            desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+                            desc.Format = (DXGI_FORMAT)swapset.info.format;
+                            desc.Texture2D.MipLevels = 1;
+                            CHECK_HRCMD(m_d3d11Device->CreateShaderResourceView(
+                                inputTexture, &desc, srv.ReleaseAndGetAddressOf()));
+                        }
+                        m_d3d11Context->PSSetShaderResources(0, 1, srv.GetAddressOf());
+                        m_d3d11Context->PSSetSamplers(0, 1, m_pointSampler.GetAddressOf());
+                        ComPtr<ID3D11RenderTargetView> rtv;
+                        {
+                            D3D11_RENDER_TARGET_VIEW_DESC desc = {};
+                            desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+                            desc.Format = (DXGI_FORMAT)swapset.info.format;
+                            CHECK_HRCMD(m_d3d11Device->CreateRenderTargetView(
+                                swapchainTexture, &desc, rtv.ReleaseAndGetAddressOf()));
+                        }
+                        m_d3d11Context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+                        D3D11_VIEWPORT viewport{};
+                        viewport.TopLeftX = (float)swapset.layerRect.offset.x;
+                        viewport.TopLeftY = (float)swapset.layerRect.offset.y;
+                        viewport.Width = (float)swapset.layerRect.extent.width;
+                        viewport.Height = (float)swapset.layerRect.extent.height;
+                        viewport.MaxDepth = 1.f;
+                        m_d3d11Context->RSSetViewports(1, &viewport);
+                        m_d3d11Context->OMSetDepthStencilState(m_noDepthTest.Get(), 0xff);
+
+                        m_d3d11Context->Draw(3, 0);
+
+                        // Unbind all resources to avoid D3D validation errors.
+                        {
+                            m_d3d11Context->VSSetShader(nullptr, nullptr, 0);
+                            m_d3d11Context->PSSetShader(nullptr, nullptr, 0);
+                            ID3D11ShaderResourceView* nullSrv[] = {nullptr};
+                            m_d3d11Context->PSSetShaderResources(0, 1, nullSrv);
+                            ID3D11SamplerState* nullSamp[] = {nullptr};
+                            m_d3d11Context->PSSetSamplers(0, 1, nullSamp);
+                            ID3D11RenderTargetView* nullRtv[] = {nullptr};
+                            m_d3d11Context->OMSetRenderTargets(1, nullRtv, nullptr);
+                        }
                     } else {
                         // Simply copy.
                         TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_Copy");
@@ -1361,6 +1424,7 @@ namespace {
 
                     CHECK_XRCMD(xrReleaseSwapchainImage(swapset.swapchain.Get(), nullptr));
                     swapset.acquiredIndex.reset();
+                    swapset.doYFlip = false;
                 }
             }
 
@@ -1451,6 +1515,23 @@ namespace {
                     D3D11_DEPTH_STENCIL_DESC desc{};
                     CHECK_HRCMD(m_d3d11Device->CreateDepthStencilState(&desc, m_noDepthTest.ReleaseAndGetAddressOf()));
                 }
+            }
+
+            // Resource for Y-flip.
+            {
+                CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
+                    k_YFlipPS, sizeof(k_YFlipPS), nullptr, m_yFlipShader.ReleaseAndGetAddressOf()));
+
+                D3D11_SAMPLER_DESC desc = {};
+                desc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
+                desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+                desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+                desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+                desc.MaxAnisotropy = 1;
+                desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+                desc.MinLOD = D3D11_MIP_LOD_BIAS_MIN;
+                desc.MaxLOD = D3D11_MIP_LOD_BIAS_MAX;
+                CHECK_HRCMD(m_d3d11Device->CreateSamplerState(&desc, m_pointSampler.ReleaseAndGetAddressOf()));
             }
 
             for (uint32_t i = 0; i < k_numGpuTimers; i++) {
@@ -1617,6 +1698,7 @@ namespace {
 
             uint32_t layerIndex = 0;
             XrRect2Di layerRect = {};
+            bool doYFlip = false;
         };
 
         struct FrameLayer {
@@ -1650,7 +1732,9 @@ namespace {
         ComPtr<ID3D11VertexShader> m_fullscreenQuadShader;
         ComPtr<ID3D11PixelShader> m_sharpeningShaderAlt;
         ComPtr<ID3D11Buffer> m_sharpeningConstants;
+        ComPtr<ID3D11PixelShader> m_yFlipShader;
         ComPtr<ID3D11DepthStencilState> m_noDepthTest;
+        ComPtr<ID3D11SamplerState> m_pointSampler;
         ComPtr<IDXGISwapChain1> m_dxgiSwapchain;
 
         xr::ActionSetHandle m_actionSet;
