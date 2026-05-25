@@ -613,7 +613,10 @@ namespace {
                 TraceLoggingWriteTagged(local,
                                         "ControllerDriver_UpdateTrackingState",
                                         TLArg((int)location.locationFlags, "LocationFlags"),
-                                        TLArg(xr::ToString(location.pose).c_str(), "Pose"));
+                                        TLArg(xr::ToString(location.pose).c_str(), "Pose"),
+                                        TLArg((int)velocity.velocityFlags, "VelocityFlags"),
+                                        TLArg(xr::ToString(velocity.linearVelocity).c_str(), "LinearVelocity"),
+                                        TLArg(xr::ToString(velocity.angularVelocity).c_str(), "AngularVelocity"));
 
                 pose.poseIsValid = Pose::IsPoseValid(location.locationFlags);
                 if (pose.poseIsValid) {

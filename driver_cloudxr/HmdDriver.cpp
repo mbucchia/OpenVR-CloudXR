@@ -147,9 +147,6 @@ namespace {
             // We control vsync from our PostPresent() method.
             vr::VRProperties()->SetBoolProperty(container, vr::Prop_DriverDirectModeSendsVsyncEvents_Bool, true);
 
-            // TODO: Investigate if this is a good idea, let CloudXR do all the prediction.
-            // vr::VRProperties()->SetBoolProperty(container, vr::Prop_DoNotApplyPrediction_Bool, true);
-
             if (m_isFovMutable) {
                 m_horizontalFovTangent = vr::VRSettings()->GetFloat("driver_cloudxr", "horizontal_fov_tangent");
                 m_verticalFovTangent = vr::VRSettings()->GetFloat("driver_cloudxr", "vertical_fov_tangent");
@@ -1138,7 +1135,10 @@ namespace {
             TraceLoggingWriteTagged(local,
                                     "HmdDriver_UpdateTrackingState",
                                     TLArg((int)location.locationFlags, "LocationFlags"),
-                                    TLArg(xr::ToString(location.pose).c_str(), "Pose"));
+                                    TLArg(xr::ToString(location.pose).c_str(), "Pose"),
+                                    TLArg((int)velocity.velocityFlags, "VelocityFlags"),
+                                    TLArg(xr::ToString(velocity.linearVelocity).c_str(), "LinearVelocity"),
+                                    TLArg(xr::ToString(velocity.angularVelocity).c_str(), "AngularVelocity"));
 
             pose.poseIsValid = Pose::IsPoseValid(location.locationFlags);
             if (pose.poseIsValid) {

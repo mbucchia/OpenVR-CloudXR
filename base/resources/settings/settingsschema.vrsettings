@@ -222,10 +222,6 @@
         }
       },
       {
-        "name": "/settings/driver_cloudxr/developer_mode",
-        "type": "bool"
-      },
-      {
         "name": "/settings/driver_cloudxr/head_prediction_blend",
         "control": "slider",
         "type": "float",
@@ -234,10 +230,7 @@
         "min": 0,
         "max": 1,
         "step": 0.05,
-        "decimals": 2,
-        "requires": {
-          "/settings/driver_cloudxr/developer_mode": true
-        }
+        "decimals": 2
       },
       {
         "name": "/settings/driver_cloudxr/controller_prediction_blend",
@@ -248,10 +241,11 @@
         "min": 0,
         "max": 1,
         "step": 0.05,
-        "decimals": 2,
-        "requires": {
-          "/settings/driver_cloudxr/developer_mode": true
-        }
+        "decimals": 2
+      },
+      {
+        "name": "/settings/driver_cloudxr/developer_mode",
+        "type": "bool"
       },
       {
         "name": "/settings/driver_cloudxr/running_start",
