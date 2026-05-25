@@ -160,7 +160,7 @@ namespace {
 
             // Initialize the OpenXR hand joints tracker.
             {
-                XrHandTrackerCreateInfoEXT createInfo{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+                XrHandTrackerCreateInfoEXT createInfo = {XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
                 createInfo.hand = isLeft ? XR_HAND_LEFT_EXT : XR_HAND_RIGHT_EXT;
                 createInfo.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
                 CHECK_XRCMD(

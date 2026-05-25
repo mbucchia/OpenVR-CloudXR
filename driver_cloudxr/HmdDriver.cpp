@@ -279,7 +279,7 @@ namespace {
                     std::this_thread::yield();
                 }
 
-                XrSessionBeginInfo sessionBeginInfo{XR_TYPE_SESSION_BEGIN_INFO};
+                XrSessionBeginInfo sessionBeginInfo = {XR_TYPE_SESSION_BEGIN_INFO};
                 sessionBeginInfo.primaryViewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
                 CHECK_XRCMD(xrBeginSession(m_session.Get(), &sessionBeginInfo));
             }
@@ -486,7 +486,7 @@ namespace {
 
                 // CloudXR does not give us shareable textures. We will manage a copy.
 
-                D3D11_TEXTURE2D_DESC desc{};
+                D3D11_TEXTURE2D_DESC desc = {};
                 images[0].texture->GetDesc(&desc);
                 TraceLoggingWriteTagged(local,
                                         "HmdDriver_CreateSwapTextureSet_Desc",
@@ -893,8 +893,8 @@ namespace {
 
             // Update inputs (buttons, etc).
             {
-                XrActionsSyncInfo syncInfo{XR_TYPE_ACTIONS_SYNC_INFO};
-                const XrActiveActionSet activeActionSet{m_actionSet.Get(), XR_NULL_PATH};
+                XrActionsSyncInfo syncInfo = {XR_TYPE_ACTIONS_SYNC_INFO};
+                const XrActiveActionSet activeActionSet = {m_actionSet.Get(), XR_NULL_PATH};
                 syncInfo.activeActionSets = &activeActionSet;
                 syncInfo.countActiveActionSets = 1;
                 CHECK_XRCMD(xrSyncActions(m_session.Get(), &syncInfo));
@@ -1255,7 +1255,6 @@ namespace {
                         constants.topLeft = swapset.layerRect.offset;
                         constants.extent = swapset.layerRect.extent;
                         constants.yFlip = swapset.doYFlip;
-
                         CasSetup(constants.const0,
                                  constants.const1,
                                  m_sharpening,
@@ -1263,7 +1262,6 @@ namespace {
                                  (AF1)swapset.layerRect.extent.height,
                                  (AF1)swapset.layerRect.extent.width,
                                  (AF1)swapset.layerRect.extent.height);
-
                         m_d3d11Context->UpdateSubresource(m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
 
                         ComPtr<ID3D11ShaderResourceView> srv;
@@ -1332,7 +1330,7 @@ namespace {
                                     swapchainTexture, &desc, rtv.ReleaseAndGetAddressOf()));
                             }
                             m_d3d11Context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
-                            D3D11_VIEWPORT viewport{};
+                            D3D11_VIEWPORT viewport = {};
                             viewport.TopLeftX = (float)swapset.layerRect.offset.x;
                             viewport.TopLeftY = (float)swapset.layerRect.offset.y;
                             viewport.Width = (float)swapset.layerRect.extent.width;
@@ -1381,7 +1379,7 @@ namespace {
                                 swapchainTexture, &desc, rtv.ReleaseAndGetAddressOf()));
                         }
                         m_d3d11Context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
-                        D3D11_VIEWPORT viewport{};
+                        D3D11_VIEWPORT viewport = {};
                         viewport.TopLeftX = (float)swapset.layerRect.offset.x;
                         viewport.TopLeftY = (float)swapset.layerRect.offset.y;
                         viewport.Width = (float)swapset.layerRect.extent.width;
@@ -1504,7 +1502,7 @@ namespace {
                     k_SharpeningPS, sizeof(k_SharpeningPS), nullptr, m_sharpeningShaderAlt.ReleaseAndGetAddressOf()));
 
                 {
-                    D3D11_BUFFER_DESC desc{};
+                    D3D11_BUFFER_DESC desc = {};
                     desc.ByteWidth = (UINT)((sizeof(SharpenConstants) + 15) / 16) * 16;
                     desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
                     desc.Usage = D3D11_USAGE_DEFAULT;
@@ -1512,7 +1510,7 @@ namespace {
                         m_d3d11Device->CreateBuffer(&desc, nullptr, m_sharpeningConstants.ReleaseAndGetAddressOf()));
                 }
                 {
-                    D3D11_DEPTH_STENCIL_DESC desc{};
+                    D3D11_DEPTH_STENCIL_DESC desc = {};
                     CHECK_HRCMD(m_d3d11Device->CreateDepthStencilState(&desc, m_noDepthTest.ReleaseAndGetAddressOf()));
                 }
             }
@@ -1545,7 +1543,7 @@ namespace {
                 renderdocModule) {
                 DriverLog("Detected RenderDoc\n");
 
-                DXGI_SWAP_CHAIN_DESC1 swapchainDesc{};
+                DXGI_SWAP_CHAIN_DESC1 swapchainDesc = {};
                 swapchainDesc.Width = 8;
                 swapchainDesc.Height = 8;
                 swapchainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -1622,7 +1620,7 @@ namespace {
                         xrCreateAction(m_actionSet.Get(), &actionCreateInfo, m_eyeGazeAction.Put(xrDestroyAction)));
                 }
                 {
-                    XrActionSpaceCreateInfo actionSpaceCreateInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+                    XrActionSpaceCreateInfo actionSpaceCreateInfo = {XR_TYPE_ACTION_SPACE_CREATE_INFO};
                     actionSpaceCreateInfo.action = m_eyeGazeAction.Get();
                     actionSpaceCreateInfo.subactionPath = XR_NULL_PATH;
                     actionSpaceCreateInfo.poseInActionSpace = Pose::Identity();
@@ -1633,7 +1631,7 @@ namespace {
                     XrActionSuggestedBinding binding;
                     binding.action = m_eyeGazeAction.Get();
 
-                    XrInteractionProfileSuggestedBinding suggestedBindings{
+                    XrInteractionProfileSuggestedBinding suggestedBindings = {
                         XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
                     CHECK_XRCMD(
                         xrStringToPath(m_instance.Get(), "/user/eyes_ext/input/gaze_ext/pose", &binding.binding));
@@ -1654,7 +1652,7 @@ namespace {
                 const auto otherSideBindings = m_controllerDriver[1]->CreateBindings(m_actionSet.Get());
                 bindings.insert(bindings.end(), otherSideBindings.begin(), otherSideBindings.end());
 
-                XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+                XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
                 CHECK_XRCMD(xrStringToPath(m_instance.Get(),
                                            m_controllerDriver[0]->GetInteractionProfile().c_str(),
                                            &suggestedBindings.interactionProfile));
@@ -1667,7 +1665,7 @@ namespace {
                 const auto otherSideBindings = m_handDriver[1]->CreateBindings(m_actionSet.Get());
                 bindings.insert(bindings.end(), otherSideBindings.begin(), otherSideBindings.end());
 
-                XrInteractionProfileSuggestedBinding suggestedBindings{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+                XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
                 CHECK_XRCMD(xrStringToPath(m_instance.Get(),
                                            m_handDriver[0]->GetInteractionProfile().c_str(),
                                            &suggestedBindings.interactionProfile));
@@ -1676,7 +1674,7 @@ namespace {
                 CHECK_XRCMD(xrSuggestInteractionProfileBindings(m_instance.Get(), &suggestedBindings));
             }
             {
-                XrSessionActionSetsAttachInfo attachInfo{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
+                XrSessionActionSetsAttachInfo attachInfo = {XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
                 const XrActionSet actionSet = m_actionSet.Get();
                 attachInfo.actionSets = &actionSet;
                 attachInfo.countActionSets = 1;

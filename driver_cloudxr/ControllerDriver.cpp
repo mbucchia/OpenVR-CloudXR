@@ -431,7 +431,7 @@ namespace {
                 actionCreateInfo.countSubactionPaths = 0;
                 CHECK_XRCMD(xrCreateAction(actionSet, &actionCreateInfo, m_trackingPoseAction.Put(xrDestroyAction)));
 
-                XrActionSpaceCreateInfo actionSpaceCreateInfo{XR_TYPE_ACTION_SPACE_CREATE_INFO};
+                XrActionSpaceCreateInfo actionSpaceCreateInfo = {XR_TYPE_ACTION_SPACE_CREATE_INFO};
                 actionSpaceCreateInfo.action = m_trackingPoseAction.Get();
                 actionSpaceCreateInfo.subactionPath = XR_NULL_PATH;
                 actionSpaceCreateInfo.poseInActionSpace = Pose::Identity();

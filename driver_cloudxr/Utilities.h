@@ -31,7 +31,7 @@ namespace util {
     class D3D11GpuTimer {
       public:
         D3D11GpuTimer(ID3D11Device* device, ID3D11DeviceContext* context) : m_context(context) {
-            D3D11_QUERY_DESC queryDesc{};
+            D3D11_QUERY_DESC queryDesc = {};
             queryDesc.Query = D3D11_QUERY_TIMESTAMP_DISJOINT;
             CHECK_HRCMD(device->CreateQuery(&queryDesc, m_timeStampDis.ReleaseAndGetAddressOf()));
             queryDesc.Query = D3D11_QUERY_TIMESTAMP;
@@ -75,7 +75,7 @@ namespace util {
         ComPtr<ID3D11Query> m_timeStampEnd;
 
         // Can the timer be queried (it might still only read 0).
-        mutable bool m_valid{false};
+        mutable bool m_valid = false;
     };
 
     static inline bool IsDepthFormat(DXGI_FORMAT format) {

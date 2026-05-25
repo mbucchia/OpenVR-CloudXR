@@ -237,7 +237,7 @@ namespace {
                             throw std::runtime_error("Runtime does not support Direct3D 11!");
                         }
 
-                        XrInstanceCreateInfo instanceCreateInfo{XR_TYPE_INSTANCE_CREATE_INFO};
+                        XrInstanceCreateInfo instanceCreateInfo = {XR_TYPE_INSTANCE_CREATE_INFO};
                         xr::SetEnabledExtensions(instanceCreateInfo, m_extensions.EnabledExtensions);
                         xr::SetApplicationInfo(instanceCreateInfo.applicationInfo,
                                                {"OpenVR-CloudXR", 1},
@@ -340,7 +340,7 @@ namespace {
             }
 
             if (m_service) {
-                nv_cxr_event event{};
+                nv_cxr_event event = {};
                 do {
                     CHECK_CXRCMD(nv_cxr_service_poll_event(m_service, &event));
 
