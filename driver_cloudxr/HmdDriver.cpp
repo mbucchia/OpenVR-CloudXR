@@ -73,6 +73,8 @@ namespace {
             m_hasHandTracking = m_system.HandTrackingProperties.supportsHandTracking;
             DriverLog(m_hasHandTracking ? "Instance supports hand tracking"
                                         : "Instance does not support hand tracking");
+            DriverLog(m_extensions.SupportsHandInteraction ? "Instance supports hand interaction profile"
+                                                           : "Instance does not hand interaction profile");
             DriverLog(m_extensions.SupportsVisibilityMask ? "Instance supports visibility mask"
                                                           : "Instance does not support visibility mask");
             {
@@ -1652,7 +1654,8 @@ namespace {
                 const auto otherSideBindings = m_controllerDriver[1]->CreateBindings(m_actionSet.Get());
                 bindings.insert(bindings.end(), otherSideBindings.begin(), otherSideBindings.end());
 
-                XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+                XrInteractionProfileSuggestedBinding suggestedBindings = {
+                    XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
                 CHECK_XRCMD(xrStringToPath(m_instance.Get(),
                                            m_controllerDriver[0]->GetInteractionProfile().c_str(),
                                            &suggestedBindings.interactionProfile));
@@ -1665,7 +1668,8 @@ namespace {
                 const auto otherSideBindings = m_handDriver[1]->CreateBindings(m_actionSet.Get());
                 bindings.insert(bindings.end(), otherSideBindings.begin(), otherSideBindings.end());
 
-                XrInteractionProfileSuggestedBinding suggestedBindings = {XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
+                XrInteractionProfileSuggestedBinding suggestedBindings = {
+                    XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
                 CHECK_XRCMD(xrStringToPath(m_instance.Get(),
                                            m_handDriver[0]->GetInteractionProfile().c_str(),
                                            &suggestedBindings.interactionProfile));

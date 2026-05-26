@@ -70,7 +70,7 @@ namespace {
     enum Component {
         ComponentSkeleton,
         ComponentIndexPinch,
-        ComponentPinkyPinch,
+        ComponentGrip,
 
         ComponentCount,
     };
@@ -153,8 +153,8 @@ namespace {
                                                        vr::VRScalarType_Absolute,
                                                        vr::VRScalarUnits_NormalizedOneSided);
             vr::VRDriverInput()->CreateScalarComponent(container,
-                                                       "/input/pinky_pinch/value",
-                                                       &m_components[ComponentPinkyPinch],
+                                                       "/input/grip/value",
+                                                       &m_components[ComponentGrip],
                                                        vr::VRScalarType_Absolute,
                                                        vr::VRScalarUnits_NormalizedOneSided);
 
@@ -249,7 +249,7 @@ namespace {
 
             // clang-format off
             addInput(ComponentIndexPinch, XR_ACTION_TYPE_FLOAT_INPUT, "pinch_ext/value", "pinch_value", "Pinch Analog");
-            addInput(ComponentPinkyPinch, XR_ACTION_TYPE_FLOAT_INPUT, "grasp_ext/value", "grasp_value", "Grasp Analog");
+            addInput(ComponentGrip, XR_ACTION_TYPE_FLOAT_INPUT, "grasp_ext/value", "grasp_value", "Grasp Analog");
             // clang-format on
 
             TraceLoggingWriteStop(local, "HandDriver_CreateBindings");
@@ -520,7 +520,7 @@ namespace {
                     };
 
                     updateAnalog(ComponentIndexPinch);
-                    updateAnalog(ComponentPinkyPinch);
+                    updateAnalog(ComponentGrip);
                 } else {
                     // The interaction profile wasn't bound (not supported by the runtime).
                     vr::VRDriverInput()->UpdateScalarComponent(m_components[ComponentIndexPinch], m_indexPinch, 0.0);
@@ -564,7 +564,6 @@ namespace {
                        (std::clamp(distance, NearDistance, FarDistance) - NearDistance) / (FarDistance - NearDistance);
             };
 
-            // TODO: Gestures detection can be improved.
             m_indexPinch = jointActionValue(joints[XR_HAND_JOINT_INDEX_TIP_EXT], joints[XR_HAND_JOINT_THUMB_TIP_EXT]);
 
             TraceLoggingWriteStop(local, "HandDriver_ProcessHandGestures");
