@@ -88,6 +88,10 @@ namespace {
 
             m_serialNumber = m_role == vr::TrackedControllerRole_LeftHand ? "HAND_LEFT" : "HAND_RIGHT";
 
+            m_sidePath =
+                xr::StringToPath(m_instance.Get(),
+                                 m_role == vr::TrackedControllerRole_LeftHand ? "/user/hand/left" : "/user/hand/right");
+
             TraceLoggingWriteStop(local, "HandDriver_Ctor");
         }
 
@@ -226,6 +230,30 @@ namespace {
 
             // Setup bindings for actions based on the OpenXR hand interaction profile. Caller must ensure that profile
             // is supported.
+
+            // Binding for the pose. We use the aim pose.
+            {
+                XrActionCreateInfo actionCreateInfo = {XR_TYPE_ACTION_CREATE_INFO};
+                strcpy_s(actionCreateInfo.actionName, isLeft ? "steamvr_left_hand_pose" : "steamvr_right_hand_pose");
+                strcpy_s(actionCreateInfo.localizedActionName, isLeft ? "Left Hand Pose" : "Right Hand Pose");
+                actionCreateInfo.actionType = XR_ACTION_TYPE_POSE_INPUT;
+                actionCreateInfo.countSubactionPaths = 0;
+                CHECK_XRCMD(xrCreateAction(actionSet, &actionCreateInfo, m_trackingPoseAction.Put(xrDestroyAction)));
+
+                XrActionSpaceCreateInfo actionSpaceCreateInfo = {XR_TYPE_ACTION_SPACE_CREATE_INFO};
+                actionSpaceCreateInfo.action = m_trackingPoseAction.Get();
+                actionSpaceCreateInfo.subactionPath = XR_NULL_PATH;
+                actionSpaceCreateInfo.poseInActionSpace = Pose::Identity();
+                CHECK_XRCMD(xrCreateActionSpace(
+                    m_session.Get(), &actionSpaceCreateInfo, m_trackingPoseSpace.Put(xrDestroySpace)));
+
+                auto& binding = bindings.emplace_back();
+                binding.action = m_trackingPoseAction.Get();
+                binding.binding = xr::StringToPath(
+                    m_instance.Get(), isLeft ? "/user/hand/left/input/aim/pose" : "/user/hand/right/input/aim/pose");
+            }
+
+            // Bindings for gestures.
             const auto addInput = [&](Component index,
                                       XrActionType actionType,
                                       const char* path,
@@ -284,6 +312,30 @@ namespace {
             pose.qWorldFromDriverRotation.w = pose.qDriverFromHeadRotation.w = pose.qRotation.w = 1.0;
 
             if (m_ready) {
+                if (m_actions[ComponentIndexPinch].Get() != XR_NULL_HANDLE) {
+                    // Query hand interaction.
+                    XrInteractionProfileState state = {XR_TYPE_INTERACTION_PROFILE_STATE};
+                    CHECK_XRCMD(xrGetCurrentInteractionProfile(m_session.Get(), m_sidePath, &state));
+                    TraceLoggingWriteTagged(
+                        local,
+                        "HandDriver_UpdateTrackingState",
+                        TLArg(state.interactionProfile != XR_NULL_PATH
+                                  ? xr::PathToString(m_instance.Get(), state.interactionProfile).c_str()
+                                  : "",
+                              "InteractionProfile"));
+
+                    XrSpaceLocation location = {XR_TYPE_SPACE_LOCATION};
+                    CHECK_XRCMD(xrLocateSpace(m_trackingPoseSpace.Get(), m_referenceSpace.Get(), time, &location));
+                    TraceLoggingWriteTagged(local,
+                                            "HandDriver_UpdateTrackingState",
+                                            TLArg((int)location.locationFlags, "LocationFlags"),
+                                            TLArg(xr::ToString(location.pose).c_str(), "AimPose"));
+
+                    // TODO: CloudXR advertises this today, but doesn't actually return any data... Once they do, figure
+                    // out what to do here to provide a more stable aim pose.
+                }
+
+                // Query hand joints.
                 static constexpr auto k_TrackedJoint = XR_HAND_JOINT_WRIST_EXT;
                 XrHandJointsLocateInfoEXT info = {XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
                 info.baseSpace = m_referenceSpace.Get();
@@ -302,7 +354,7 @@ namespace {
                                         "HandDriver_UpdateTrackingState",
                                         TLArg(!!locations.isActive, "IsActive"),
                                         TLArg((int)joints[k_TrackedJoint].locationFlags, "LocationFlags"),
-                                        TLArg(xr::ToString(joints[k_TrackedJoint].pose).c_str(), "Pose"));
+                                        TLArg(xr::ToString(joints[k_TrackedJoint].pose).c_str(), "TrackedJointPose"));
 
                 // Update the root pose.
                 pose.deviceIsConnected = locations.isActive;
@@ -483,10 +535,8 @@ namespace {
                                                                  BoneCount);
                 }
 
-                // Detect gestures if the hand interaction profile isn't bound (not supported by the runtime).
-                if (m_actions[ComponentIndexPinch].Get() == XR_NULL_HANDLE) {
-                    ProcessHandGestures(joints);
-                }
+                // Detect gestures. These may not be used if the hand interaction profile is active.
+                ProcessHandGestures(joints);
             }
 
             TraceLoggingWriteStop(
@@ -506,25 +556,32 @@ namespace {
                 const vr::PropertyContainerHandle_t container =
                     vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
 
-                if (m_actions[ComponentIndexPinch].Get() != XR_NULL_HANDLE) {
-                    const auto updateAnalog = [&](Component index) {
-                        XrActionStateGetInfo info = {XR_TYPE_ACTION_STATE_GET_INFO};
-                        info.action = m_actions[index].Get();
-                        XrActionStateFloat state = {XR_TYPE_ACTION_STATE_FLOAT};
-                        CHECK_XRCMD(xrGetActionStateFloat(m_session.Get(), &info, &state));
-                        TraceLoggingWriteTagged(local,
-                                                "HandDriver_UpdateInputs_UpdateScalarComponent",
-                                                TLArg(!!state.isActive, "IsActive"),
-                                                TLArg(state.currentState, "State"));
-                        vr::VRDriverInput()->UpdateScalarComponent(m_components[index], state.currentState, 0.0);
-                    };
+                const auto updateAnalog = [&](Component index) {
+                    if (m_actions[index].Get() == XR_NULL_HANDLE) {
+                        return false;
+                    }
 
-                    updateAnalog(ComponentIndexPinch);
-                    updateAnalog(ComponentGrip);
-                } else {
-                    // The interaction profile wasn't bound (not supported by the runtime).
+                    XrActionStateGetInfo info = {XR_TYPE_ACTION_STATE_GET_INFO};
+                    info.action = m_actions[index].Get();
+                    XrActionStateFloat state = {XR_TYPE_ACTION_STATE_FLOAT};
+                    CHECK_XRCMD(xrGetActionStateFloat(m_session.Get(), &info, &state));
+                    TraceLoggingWriteTagged(local,
+                                            "HandDriver_UpdateInputs_UpdateScalarComponent",
+                                            TLArg(!!state.isActive, "IsActive"),
+                                            TLArg(state.currentState, "State"));
+                    if (!state.isActive) {
+                        return false;
+                    }
+
+                    vr ::VRDriverInput()->UpdateScalarComponent(m_components[index], state.currentState, 0.0);
+                    return true;
+                };
+
+                if (!updateAnalog(ComponentIndexPinch)) {
+                    // Fallback to gesture detection based on hand joints poses.
                     vr::VRDriverInput()->UpdateScalarComponent(m_components[ComponentIndexPinch], m_indexPinch, 0.0);
                 }
+                updateAnalog(ComponentGrip);
             }
 
             TraceLoggingWriteStop(local, "HandDriver_UpdateInputsState");
@@ -581,8 +638,11 @@ namespace {
 
         bool m_ready = false;
 
+        XrPath m_sidePath = XR_NULL_PATH;
         xr::HandTrackerHandle m_handTracker;
         xr::ActionHandle m_actions[ComponentCount];
+        xr::ActionHandle m_trackingPoseAction;
+        xr::SpaceHandle m_trackingPoseSpace;
 
         float m_indexPinch = 0.f;
 

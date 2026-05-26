@@ -6,6 +6,7 @@
     </LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerEnvironment>OXR_DEBUG_BINDINGS=true</LocalDebuggerEnvironment>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LocalDebuggerCommand>C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64\vrstartup.exe</LocalDebuggerCommand>
@@ -13,5 +14,6 @@
     </LocalDebuggerCommandArguments>
     <LocalDebuggerWorkingDirectory>C:\Program Files (x86)\Steam\steamapps\common\SteamVR\bin\win64</LocalDebuggerWorkingDirectory>
     <DebuggerFlavor>WindowsLocalDebugger</DebuggerFlavor>
+    <LocalDebuggerEnvironment>OXR_DEBUG_BINDINGS=true</LocalDebuggerEnvironment>
   </PropertyGroup>
 </Project>
