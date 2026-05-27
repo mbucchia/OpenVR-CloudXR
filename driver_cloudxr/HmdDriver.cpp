@@ -1577,6 +1577,11 @@ namespace {
             }
 
             // Create reference spaces.
+            const auto availableReferenceSpaces = xr::EnumerateReferenceSpaceTypes(m_session.Get());
+            m_hasStageSpace = std::find(availableReferenceSpaces.cbegin(),
+                                        availableReferenceSpaces.cend(),
+                                        XR_REFERENCE_SPACE_TYPE_STAGE) != availableReferenceSpaces.cend();
+            DriverLog(m_hasStageSpace ? "Session supports stage space" : "Session does not support stage space");
             {
                 XrReferenceSpaceCreateInfo spaceCreateInfo = {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
                 spaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
@@ -1587,11 +1592,7 @@ namespace {
                 XrReferenceSpaceCreateInfo spaceCreateInfo = {XR_TYPE_REFERENCE_SPACE_CREATE_INFO};
                 const auto availableReferenceSpaces = xr::EnumerateReferenceSpaceTypes(m_session.Get());
                 spaceCreateInfo.referenceSpaceType =
-                    std::find(availableReferenceSpaces.cbegin(),
-                              availableReferenceSpaces.cend(),
-                              XR_REFERENCE_SPACE_TYPE_STAGE) != availableReferenceSpaces.cend()
-                        ? XR_REFERENCE_SPACE_TYPE_STAGE
-                        : XR_REFERENCE_SPACE_TYPE_LOCAL;
+                    m_hasStageSpace ? XR_REFERENCE_SPACE_TYPE_STAGE : XR_REFERENCE_SPACE_TYPE_LOCAL;
                 spaceCreateInfo.poseInReferenceSpace = Pose::Identity();
                 CHECK_XRCMD(
                     xrCreateReferenceSpace(m_session.Get(), &spaceCreateInfo, m_referenceSpace.Put(xrDestroySpace)));
@@ -1715,6 +1716,7 @@ namespace {
         bool m_hasEyeTracking = false;
         bool m_hasHandTracking = false;
         bool m_isFovMutable = false;
+        bool m_hasStageSpace = false;
         uint32_t m_renderTargetWidth = 0;
         uint32_t m_renderTargetHeight = 0;
         float m_horizontalFovTangent = 1.f;
