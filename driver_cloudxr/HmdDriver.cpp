@@ -60,12 +60,19 @@ namespace {
         alignas(4) bool yFlip;
     };
 
-    class HmdDriver : public IHmdDriver, public vr::IVRDisplayComponent, public vr::IVRDriverDirectModeComponent {
+    class HmdDriver : public IHmdDriver,
+                      public vr::IVRDisplayComponent,
+                      public vr::IVRDriverDirectModeComponent,
+                      public vr::IVRVirtualDisplay {
       public:
         HmdDriver(xr::InstanceHandle& instance, xr::ExtensionContext& extensions, sample::SystemContext& system)
             : m_instance(instance), m_extensions(extensions), m_system(system) {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local, "HmdDriver_Ctor");
+
+            QueryPerformanceFrequency(&m_qpcFrequency);
+
+            m_useVirtualDisplay = vr::VRSettings()->GetBool("driver_cloudxr", "use_virtual_display");
 
             // Cache useful state.
             m_hasEyeTracking = m_system.EyeGazeInteractionProperties.supportsEyeGazeInteraction;
@@ -351,8 +358,11 @@ namespace {
         void* GetComponent(const char* pchComponentNameAndVersion) override {
             if (strcmp(vr::IVRDisplayComponent_Version, pchComponentNameAndVersion) == 0) {
                 return (vr::IVRDisplayComponent*)this;
-            } else if (strcmp(vr::IVRDriverDirectModeComponent_Version, pchComponentNameAndVersion) == 0) {
+            } else if (strcmp(vr::IVRDriverDirectModeComponent_Version, pchComponentNameAndVersion) == 0 &&
+                       !m_useVirtualDisplay) {
                 return (vr::IVRDriverDirectModeComponent*)this;
+            } else if (strcmp(vr::IVRVirtualDisplay_Version, pchComponentNameAndVersion) == 0 && m_useVirtualDisplay) {
+                return (vr::IVRVirtualDisplay*)this;
             }
             return nullptr;
         }
@@ -393,9 +403,15 @@ namespace {
 
         void GetEyeOutputViewport(
             vr::EVREye eEye, uint32_t* pnX, uint32_t* pnY, uint32_t* pnWidth, uint32_t* pnHeight) override {
-            // Not used for direct mode component drivers.
-            *pnX = *pnY = 0;
-            *pnWidth = *pnHeight = 1440;
+            // Not used for direct mode component drivers, but determines the backbuffer double-wide layout for virtual
+            // display drivers.
+            *pnWidth = (uint32_t)(m_renderTargetWidth * m_horizontalFovTangent);
+            *pnWidth = (*pnWidth + 3) / 4 * 4;
+            *pnX = eEye == vr::Eye_Left ? 0 : *pnWidth;
+
+            *pnHeight = (uint32_t)(m_renderTargetHeight * m_verticalFovTangent);
+            *pnHeight = (*pnHeight + 3) / 4 * 4;
+            *pnY = 0;
         }
 
         void GetProjectionRaw(vr::EVREye eEye, float* pfLeft, float* pfRight, float* pfTop, float* pfBottom) override {
@@ -420,14 +436,22 @@ namespace {
         }
 
         vr::DistortionCoordinates_t ComputeDistortion(vr::EVREye eEye, float fU, float fV) override {
-            // Not used for direct mode component drivers.
-            return {};
+            // Not used for direct mode component drivers, but required for virtual display.
+            // clang-format off
+            return {{fU, fV}, {fU, fV}, {fU, fV}};
+            // clang-format on
         }
 
         void GetWindowBounds(int32_t* pnX, int32_t* pnY, uint32_t* pnWidth, uint32_t* pnHeight) override {
-            // Not used for direct mode component drivers.
+            // Not used for direct mode component drivers, but determines the backbuffer resolution for virtual display
+            // drivers.
             *pnX = *pnY = 0;
-            *pnWidth = *pnHeight = 1440;
+
+            // Double-wide.
+            *pnWidth = (uint32_t)(m_renderTargetWidth * m_horizontalFovTangent * xr::StereoView::Count);
+            *pnWidth = (*pnWidth + 3) / 4 * 4;
+            *pnHeight = (uint32_t)(m_renderTargetHeight * m_verticalFovTangent);
+            *pnHeight = (*pnHeight + 3) / 4 * 4;
         }
 
         bool ComputeInverseDistortion(
@@ -621,7 +645,7 @@ namespace {
             std::unique_lock lock(m_swapsetsMutex);
 
             // TODO: "Now playing" layer seems to obstruct game layer.
-            FrameLayer layer;
+            FrameLayer layer = {};
             uint32_t goodViewsCount = 0;
             for (uint32_t eye = 0; eye < xr::StereoView::Count; eye++) {
                 if (!perEye[eye].hTexture) {
@@ -689,6 +713,48 @@ namespace {
             TraceLoggingWriteStop(local, "HmdDriver_SubmitLayer");
         }
 
+        ID3D11Texture2D* AcquireSync(HANDLE syncTexture) {
+            TraceLocalActivity(local);
+            TraceLoggingWriteStart(
+                local, "HmdDriver_AcquireSync", TLArg(m_deviceIndex, "ObjectId"), TLPArg(syncTexture, "SyncTexture"));
+
+            const auto it = m_sharedTexturesCache.find(syncTexture);
+            if (it != m_sharedTexturesCache.cend()) {
+                m_syncTexture = it->second;
+            } else {
+                if (FAILED(m_d3d11Device->OpenSharedResource(syncTexture,
+                                                             IID_PPV_ARGS(m_syncTexture.ReleaseAndGetAddressOf())))) {
+                    CHECK_HRCMD(m_d3d11Device->OpenSharedResource1(
+                        syncTexture, IID_PPV_ARGS(m_syncTexture.ReleaseAndGetAddressOf())));
+                }
+                m_sharedTexturesCache.insert_or_assign((HANDLE)syncTexture, m_syncTexture);
+            }
+
+            // Acquire the keyed mutex passed by the compositor to signal the end of the GPU work.
+            CHECK_HRCMD(m_syncTexture->QueryInterface(IID_PPV_ARGS(m_syncMutex.ReleaseAndGetAddressOf())));
+            HRESULT result;
+            {
+                TraceLocalActivity(acquireSync);
+                TraceLoggingWriteStart(acquireSync, "HmdDriver_AcquireSync_Wait");
+                result = m_syncMutex->AcquireSync(0, 100);
+                TraceLoggingWriteStop(acquireSync, "HmdDriver_AcquireSync_Wait", TLArg(result, "Result"));
+            }
+            CHECK_HRCMD(result);
+
+            if (result == WAIT_TIMEOUT) {
+                TraceLoggingWriteTagged(local, "HmdDriver_AcquireSync", TLArg("Timedout", "Status"));
+                m_syncMutex.Reset();
+            } else if (result == WAIT_ABANDONED) {
+                TraceLoggingWriteTagged(local, "HmdDriver_AcquireSync", TLArg("Abandoned", "Status"));
+                m_syncMutex->ReleaseSync(0);
+                m_syncMutex.Reset();
+            }
+
+            TraceLoggingWriteStop(local, "HmdDriver_AcquireSync");
+
+            return m_syncTexture.Get();
+        }
+
         void Present(vr::SharedTextureHandle_t syncTexture) override {
             TraceLocalActivity(local);
             TraceLoggingWriteStart(local,
@@ -696,34 +762,8 @@ namespace {
                                    TLArg(m_deviceIndex, "ObjectId"),
                                    TLPArg((HANDLE)syncTexture, "SyncTexture"));
 
-            // Acquire the keyed mutex passed by the compositor to signal the end of the GPU work.
-            if ((HANDLE)syncTexture != m_syncTextureHandle) {
-                if (FAILED(m_d3d11Device->OpenSharedResource((HANDLE)syncTexture,
-                                                             IID_PPV_ARGS(m_syncTexture.ReleaseAndGetAddressOf())))) {
-                    CHECK_HRCMD(m_d3d11Device->OpenSharedResource1(
-                        (HANDLE)syncTexture, IID_PPV_ARGS(m_syncTexture.ReleaseAndGetAddressOf())));
-                }
-                m_syncTextureHandle = (HANDLE)syncTexture;
-            }
-
-            CHECK_HRCMD(m_syncTexture->QueryInterface(IID_PPV_ARGS(m_syncMutex.ReleaseAndGetAddressOf())));
-
-            HRESULT result;
-            {
-                TraceLocalActivity(acquireSync);
-                TraceLoggingWriteStart(acquireSync, "HmdDriver_Present_AcquireSync");
-                result = m_syncMutex->AcquireSync(0, 100);
-                TraceLoggingWriteStop(acquireSync, "HmdDriver_Present_AcquireSync", TLArg(result, "Result"));
-            }
-            CHECK_HRCMD(result);
-
-            if (result == WAIT_TIMEOUT) {
-                TraceLoggingWriteTagged(local, "HmdDriver_Present_AcquireSyncTimedout");
-                m_syncMutex.Reset();
-            } else if (result == WAIT_ABANDONED) {
-                TraceLoggingWriteTagged(local, "HmdDriver_Present_AcquireSyncAbandoned");
-                m_syncMutex->ReleaseSync(0);
-                m_syncMutex.Reset();
+            if (!m_useVirtualDisplay) {
+                AcquireSync((HANDLE)syncTexture);
             }
 
             // Read oldest timer (before we start a new measurement).
@@ -811,12 +851,19 @@ namespace {
                                           TLArg(m_frameState.predictedDisplayPeriod, "PredictedDisplayPeriod"));
                 }
 
-                const float runningStart =
-                    std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "running_start"), 0.f, 1.f);
-                const auto vsyncTimeOffset = runningStart * m_frameState.predictedDisplayPeriod / 1e9f;
-                TraceLoggingWriteTagged(
-                    local, "HmdDriver_PostPresent_VsyncEvent", TLArg(vsyncTimeOffset, "VsyncTimeOffset"));
-                vr::VRServerDriverHost()->VsyncEvent(vsyncTimeOffset);
+                if (!m_useVirtualDisplay) {
+                    const float runningStart =
+                        std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "running_start"), 0.f, 1.f);
+                    const auto vsyncTimeOffset = runningStart * m_frameState.predictedDisplayPeriod / 1e9f;
+                    TraceLoggingWriteTagged(
+                        local, "HmdDriver_PostPresent_VsyncEvent", TLArg(vsyncTimeOffset, "VsyncTimeOffset"));
+                    vr::VRServerDriverHost()->VsyncEvent(vsyncTimeOffset);
+                } else {
+                    QueryPerformanceCounter(&m_lastVsyncTime);
+                    m_vsyncCounter++;
+                    TraceLoggingWriteTagged(
+                        local, "HmdDriver_PostPresent_VsyncState", TLArg(m_vsyncCounter, "VsyncCounter"));
+                }
 
                 // Acquire swapset images for the upcoming frame.
                 {
@@ -912,6 +959,115 @@ namespace {
             m_sharpening = std::clamp(vr::VRSettings()->GetFloat("driver_cloudxr", "sharpening"), 0.f, 1.f);
 
             TraceLoggingWriteStop(local, "HmdDriver_PostPresent");
+        }
+
+        void Present(const vr::PresentInfo_t* pPresentInfo, uint32_t unPresentInfoSize) override {
+            TraceLocalActivity(local);
+            TraceLoggingWriteStart(local,
+                                   "HmdDriver_PresentVirtualDisplay",
+                                   TLArg(m_deviceIndex, "ObjectId"),
+                                   TLPArg((HANDLE)pPresentInfo->backbufferTextureHandle, "BackbufferTexture"),
+                                   TLArg((int)pPresentInfo->vsync, "Vsync"),
+                                   TLArg(pPresentInfo->nFrameId, "FrameId"),
+                                   TLArg(pPresentInfo->flVSyncTimeInSeconds, "VsyncTime"));
+
+            ID3D11Texture2D* backbuffer = AcquireSync((HANDLE)pPresentInfo->backbufferTextureHandle);
+            if (backbuffer) {
+                // Create a swapchain if needed.
+                D3D11_TEXTURE2D_DESC desc = {};
+                backbuffer->GetDesc(&desc);
+                // TODO: Check that format is compatible?
+                if (!m_backbufferSwapchain || desc.Width != m_backbufferInfo.width ||
+                    desc.Height != m_backbufferInfo.height) {
+                    m_backbufferInfo = {XR_TYPE_SWAPCHAIN_CREATE_INFO};
+                    m_backbufferInfo.width = desc.Width;
+                    m_backbufferInfo.height = desc.Height;
+                    m_backbufferInfo.format = GetSrgbFormat(desc.Format);
+                    m_backbufferInfo.arraySize = m_backbufferInfo.faceCount = m_backbufferInfo.mipCount =
+                        m_backbufferInfo.sampleCount = 1;
+                    m_backbufferInfo.usageFlags = XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT;
+                    CHECK_XRCMD(xrCreateSwapchain(
+                        m_session.Get(), &m_backbufferInfo, m_backbufferSwapchain.Put(xrDestroySwapchain)));
+                    m_backbufferImages.clear();
+
+                    uint32_t count = 0;
+                    CHECK_XRCMD(xrEnumerateSwapchainImages(m_backbufferSwapchain.Get(), 0, &count, nullptr));
+
+                    std::vector<XrSwapchainImageD3D11KHR> images(3, {XR_TYPE_SWAPCHAIN_IMAGE_D3D11_KHR});
+                    CHECK_XRCMD(
+                        xrEnumerateSwapchainImages(m_backbufferSwapchain.Get(),
+                                                   count,
+                                                   &count,
+                                                   reinterpret_cast<XrSwapchainImageBaseHeader*>(images.data())));
+                    for (const auto& image : images) {
+                        m_backbufferImages.push_back(image.texture);
+                    }
+                }
+                const auto eyeWidth = desc.Width / 2;
+
+                // Flush to the swapchain.
+                uint32_t acquiredIndex;
+                CHECK_XRCMD(xrAcquireSwapchainImage(m_backbufferSwapchain.Get(), nullptr, &acquiredIndex));
+
+                XrSwapchainImageWaitInfo waitInfo = {XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO};
+                waitInfo.timeout = XR_INFINITE_DURATION;
+                CHECK_XRCMD(xrWaitSwapchainImage(m_backbufferSwapchain.Get(), &waitInfo));
+
+                m_d3d11Context->CopySubresourceRegion(
+                    m_backbufferImages[acquiredIndex].Get(), 0, 0, 0, 0, backbuffer, 0, nullptr);
+
+                CHECK_XRCMD(xrReleaseSwapchainImage(m_backbufferSwapchain.Get(), nullptr));
+
+                // Form the projection layer.
+                FrameLayer layer = {};
+                for (uint32_t eye = 0; eye < xr::StereoView::Count; eye++) {
+                    // TODO: We need to get this from SteamVR! Without the proper pose used for reprojection in
+                    // vrcompositor, the reprojection applied on the CloudXR client is incorrect, causing large jitter.
+                    layer.views[eye].pose = m_latestEyePoses[eye];
+                    layer.views[eye].fov = m_cachedEyeFov[eye];
+                    layer.views[eye].subImage.swapchain = m_backbufferSwapchain.Get();
+                    layer.views[eye].subImage.imageRect.offset = {!eye ? 0 : (int)eyeWidth, 0};
+                    layer.views[eye].subImage.imageRect.extent = {(int)eyeWidth, (int)desc.Height};
+                    TraceLoggingWriteTagged(
+                        local,
+                        "HmdDriver_PresentVirtualDisplay",
+                        TLArg(eye == vr::Eye_Left ? "Left" : "Right", "Eye"),
+                        TLArg(xr::ToString(layer.views[eye].pose).c_str(), "Pose"),
+                        TLArg(xr::ToString(layer.views[eye].fov).c_str(), "Fov"),
+                        TLArg(xr::ToString(layer.views[eye].subImage.imageRect).c_str(), "ImageRect"));
+                }
+                m_frameLayers.emplace_back(layer);
+
+                Present(0);
+            }
+
+            TraceLoggingWriteStop(local, "HmdDriver_PresentVirtualDisplay");
+        }
+
+        void WaitForPresent() override {
+            TraceLocalActivity(local);
+            TraceLoggingWriteStart(local, "HmdDriver_WaitForPresent");
+
+            PostPresent(nullptr);
+
+            TraceLoggingWriteStop(local, "HmdDriver_WaitForPresent");
+        }
+
+        bool GetTimeSinceLastVsync(float* pfSecondsSinceLastVsync, uint64_t* pulFrameCounter) override {
+            TraceLocalActivity(local);
+            TraceLoggingWriteStart(local, "HmdDriver_GetTimeSinceLastVsync");
+
+            LARGE_INTEGER now;
+            QueryPerformanceCounter(&now);
+            *pfSecondsSinceLastVsync = (now.QuadPart - m_lastVsyncTime.QuadPart) / (float)m_qpcFrequency.QuadPart;
+            *pulFrameCounter = m_vsyncCounter;
+
+            TraceLoggingWriteStop(local,
+                                  "HmdDriver_GetTimeSinceLastVsync",
+                                  TLArg(*pulFrameCounter, "FrameCounter"),
+                                  TLArg(*pfSecondsSinceLastVsync, "TimeSinceLastVsync"));
+
+            return true;
         }
 
         void SendHapticEvent(const vr::VREvent_HapticVibration_t& data) override {
@@ -1153,6 +1309,26 @@ namespace {
                                     TLArg((int)velocity.velocityFlags, "VelocityFlags"),
                                     TLArg(xr::ToString(velocity.linearVelocity).c_str(), "LinearVelocity"),
                                     TLArg(xr::ToString(velocity.angularVelocity).c_str(), "AngularVelocity"));
+            if (m_useVirtualDisplay) {
+                XrViewLocateInfo locateInfo = {XR_TYPE_VIEW_LOCATE_INFO};
+                locateInfo.viewConfigurationType = XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO;
+                locateInfo.space = m_referenceSpace.Get();
+                locateInfo.displayTime = time;
+                XrViewState viewsState = {XR_TYPE_VIEW_STATE};
+                XrView views[xr::StereoView::Count] = {{XR_TYPE_VIEW}, {XR_TYPE_VIEW}};
+                uint32_t count = xr::StereoView::Count;
+                CHECK_XRCMD(xrLocateViews(m_session.Get(), &locateInfo, &viewsState, count, &count, views));
+                TraceLoggingWriteTagged(local,
+                                        "HmdDriver_UpdateHeadProperties",
+                                        TLArg((int)viewsState.viewStateFlags, "ViewStateFlags"),
+                                        TLArg(xr::ToString(views[xr::StereoView::Left].pose).c_str(), "LeftPose"),
+                                        TLArg(xr::ToString(views[xr::StereoView::Left].fov).c_str(), "LeftFov"),
+                                        TLArg(xr::ToString(views[xr::StereoView::Right].pose).c_str(), "RightPose"),
+                                        TLArg(xr::ToString(views[xr::StereoView::Right].fov).c_str(), "RightFov"));
+
+                m_latestEyePoses[xr::StereoView::Left] = views[xr::StereoView::Left].pose;
+                m_latestEyePoses[xr::StereoView::Right] = views[xr::StereoView::Right].pose;
+            }
 
             pose.poseIsValid = Pose::IsPoseValid(location.locationFlags);
             if (pose.poseIsValid) {
@@ -1710,8 +1886,11 @@ namespace {
         };
 
         vr::TrackedDeviceIndex_t m_deviceIndex = vr::k_unTrackedDeviceIndexInvalid;
+        bool m_useVirtualDisplay = false;
 
         vr::VRInputComponentHandle_t m_components[ComponentCount] = {};
+
+        LARGE_INTEGER m_qpcFrequency = {};
 
         bool m_hasEyeTracking = false;
         bool m_hasHandTracking = false;
@@ -1754,12 +1933,19 @@ namespace {
         XrFovf m_cachedEyeFov[xr::StereoView::Count] = {};
         float m_sharpening = 0.f;
 
+        XrPosef m_latestEyePoses[xr::StereoView::Count] = {Pose::Identity(), Pose::Identity()};
+
         std::shared_mutex m_swapsetsMutex;
         std::vector<std::unique_ptr<TextureSwapset>> m_swapsets;
+        XrSwapchainCreateInfo m_backbufferInfo = {};
+        xr::SwapchainHandle m_backbufferSwapchain;
+        std::vector<ComPtr<ID3D11Texture2D>> m_backbufferImages;
 
-        HANDLE m_syncTextureHandle = {};
+        std::unordered_map<HANDLE, ComPtr<ID3D11Texture2D>> m_sharedTexturesCache;
         ComPtr<ID3D11Texture2D> m_syncTexture;
         ComPtr<IDXGIKeyedMutex> m_syncMutex;
+        LARGE_INTEGER m_lastVsyncTime = {};
+        uint64_t m_vsyncCounter = 0;
 
         std::vector<FrameLayer> m_frameLayers;
 

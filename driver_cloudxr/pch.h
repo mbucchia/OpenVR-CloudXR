@@ -48,6 +48,7 @@ using Microsoft::WRL::ComPtr;
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
 
 #include <openvr_driver.h>
 

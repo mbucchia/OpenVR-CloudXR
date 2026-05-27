@@ -260,6 +260,16 @@
         "requires": {
           "/settings/driver_cloudxr/developer_mode": true
         }
+      },
+      {
+        "name": "/settings/driver_cloudxr/use_virtual_display",
+        "control": "toggle",
+        "label": "Use Virtual Display",
+        "advanced_only": true,
+        "requires_restart": true,
+        "requires": {
+          "/settings/driver_cloudxr/developer_mode": true
+        }
       }
     ]
   }
