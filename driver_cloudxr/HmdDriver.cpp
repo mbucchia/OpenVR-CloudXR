@@ -510,6 +510,10 @@ namespace {
                     if (!index) {
                         // Create a shareable copy of the texture.
                         desc.MiscFlags = D3D11_RESOURCE_MISC_SHARED;
+                        // The application texture does not need to be usable for compute.
+                        desc.BindFlags &= ~D3D11_BIND_UNORDERED_ACCESS;
+                        // Ensure format is typed (for OpenGL interop).
+                        desc.Format = GetTypedFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat);
                         CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
                             &desc, nullptr, swapset->textures[index].ReleaseAndGetAddressOf()));
                     } else {
