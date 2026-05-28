@@ -33,10 +33,14 @@ CloudXR is NOT an AR/VR streaming solution that is usable "out-of-the-box" for e
 platform on top of which clients (streaming applications running on the headset) can be developed, and a service
 infrastructure must be set-up.
 
-**On its own, the OpenVR-CloudXR driver cannot be used.**
+On its own, the OpenVR-CloudXR driver cannot be used.
 
 Instead, OpenVR-CloudXR is meant to enable developers to build on top of CloudXR solutions while preserving the ability
 to offer SteamVR support.
+
+===> ___OpenVR-CloudXR driver is now available in [KRVR](https://krvr.app/) for Apple Vision Pro!___ <===
+
+Head to https://krvr.app/ for full instructions.
 
 ## For CloudXR developers
 
