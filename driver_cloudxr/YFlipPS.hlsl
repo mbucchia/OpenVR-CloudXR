@@ -20,10 +20,19 @@
 // OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 // SOFTWARE.
 
-SamplerState sourceSampler : register(s0);
+cbuffer config : register(b0)
+{
+    uint4 unused0;
+    uint4 unused1;
+    uint2 topLeft;
+    uint2 extent;
+    uint unused3;
+};
+
 Texture2D sourceTexture : register(t0);
 
 float4 main(in float4 position : SV_POSITION, in float2 texcoord : TEXCOORD0) : SV_TARGET
 {
-    return sourceTexture.Sample(sourceSampler, float2(texcoord.x, 1 - texcoord.y));
+    uint2 xy = uint2(texcoord.x * extent.x, extent.y - texcoord.y * extent.y);
+    return sourceTexture.Load(int3(xy, 0));
 }

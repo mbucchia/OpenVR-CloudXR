@@ -52,7 +52,7 @@ namespace {
         ComponentCount,
     };
 
-    struct SharpenConstants {
+    struct ShaderConstants {
         alignas(16) uint32_t const0[4];
         alignas(16) uint32_t const1[4];
         alignas(8) XrOffset2Di topLeft;
@@ -1257,7 +1257,7 @@ namespace {
 
                     if (swapset.layerIndex == 0 && m_sharpening > 0) {
                         // Setup common resources for sharpening.
-                        SharpenConstants constants = {};
+                        ShaderConstants constants = {};
                         constants.topLeft = swapset.layerRect.offset;
                         constants.extent = swapset.layerRect.extent;
                         constants.yFlip = swapset.doYFlip;
@@ -1362,9 +1362,16 @@ namespace {
                     } else if (swapset.doYFlip) {
                         // Flip via Pixel Shader.
                         TraceLoggingWriteTagged(local, "HmdDriver_ProcessFrameSwapchains_FlipPS");
+
+                        ShaderConstants constants = {};
+                        constants.topLeft = swapset.layerRect.offset;
+                        constants.extent = swapset.layerRect.extent;
+                        m_d3d11Context->UpdateSubresource(m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
+
                         m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
                         m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
                         m_d3d11Context->PSSetShader(m_yFlipShader.Get(), nullptr, 0);
+                        m_d3d11Context->PSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
                         ComPtr<ID3D11ShaderResourceView> srv;
                         {
                             D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
@@ -1375,7 +1382,6 @@ namespace {
                                 inputTexture, &desc, srv.ReleaseAndGetAddressOf()));
                         }
                         m_d3d11Context->PSSetShaderResources(0, 1, srv.GetAddressOf());
-                        m_d3d11Context->PSSetSamplers(0, 1, m_pointSampler.GetAddressOf());
                         ComPtr<ID3D11RenderTargetView> rtv;
                         {
                             D3D11_RENDER_TARGET_VIEW_DESC desc = {};
@@ -1400,10 +1406,10 @@ namespace {
                         {
                             m_d3d11Context->VSSetShader(nullptr, nullptr, 0);
                             m_d3d11Context->PSSetShader(nullptr, nullptr, 0);
+                            ID3D11Buffer* nullCbv[] = {nullptr};
+                            m_d3d11Context->PSSetConstantBuffers(0, 1, nullCbv);
                             ID3D11ShaderResourceView* nullSrv[] = {nullptr};
                             m_d3d11Context->PSSetShaderResources(0, 1, nullSrv);
-                            ID3D11SamplerState* nullSamp[] = {nullptr};
-                            m_d3d11Context->PSSetSamplers(0, 1, nullSamp);
                             ID3D11RenderTargetView* nullRtv[] = {nullptr};
                             m_d3d11Context->OMSetRenderTargets(1, nullRtv, nullptr);
                         }
@@ -1492,7 +1498,7 @@ namespace {
             CHECK_XRCMD(xrCreateSession(m_instance.Get(), &sessionCreateInfo, m_session.Put(xrDestroySession)));
             DriverLog("Using Direct3D 11");
 
-            // Resources for CAS.
+            // Resources for CAS, y-flip and other post-processing.
             {
                 CHECK_HRCMD(m_d3d11Device->CreateComputeShader(
                     k_SharpeningCS, sizeof(k_SharpeningCS), nullptr, m_sharpeningShader[0].ReleaseAndGetAddressOf()));
@@ -1506,10 +1512,12 @@ namespace {
                                                               m_fullscreenQuadShader.ReleaseAndGetAddressOf()));
                 CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
                     k_SharpeningPS, sizeof(k_SharpeningPS), nullptr, m_sharpeningShaderAlt.ReleaseAndGetAddressOf()));
+                CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
+                    k_YFlipPS, sizeof(k_YFlipPS), nullptr, m_yFlipShader.ReleaseAndGetAddressOf()));
 
                 {
                     D3D11_BUFFER_DESC desc = {};
-                    desc.ByteWidth = (UINT)((sizeof(SharpenConstants) + 15) / 16) * 16;
+                    desc.ByteWidth = (UINT)((sizeof(ShaderConstants) + 15) / 16) * 16;
                     desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
                     desc.Usage = D3D11_USAGE_DEFAULT;
                     CHECK_HRCMD(
@@ -1519,23 +1527,6 @@ namespace {
                     D3D11_DEPTH_STENCIL_DESC desc = {};
                     CHECK_HRCMD(m_d3d11Device->CreateDepthStencilState(&desc, m_noDepthTest.ReleaseAndGetAddressOf()));
                 }
-            }
-
-            // Resource for Y-flip.
-            {
-                CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
-                    k_YFlipPS, sizeof(k_YFlipPS), nullptr, m_yFlipShader.ReleaseAndGetAddressOf()));
-
-                D3D11_SAMPLER_DESC desc = {};
-                desc.Filter = D3D11_FILTER_MIN_MAG_MIP_POINT;
-                desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
-                desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
-                desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
-                desc.MaxAnisotropy = 1;
-                desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
-                desc.MinLOD = D3D11_MIP_LOD_BIAS_MIN;
-                desc.MaxLOD = D3D11_MIP_LOD_BIAS_MAX;
-                CHECK_HRCMD(m_d3d11Device->CreateSamplerState(&desc, m_pointSampler.ReleaseAndGetAddressOf()));
             }
 
             for (uint32_t i = 0; i < k_numGpuTimers; i++) {
@@ -1742,7 +1733,6 @@ namespace {
         ComPtr<ID3D11Buffer> m_sharpeningConstants;
         ComPtr<ID3D11PixelShader> m_yFlipShader;
         ComPtr<ID3D11DepthStencilState> m_noDepthTest;
-        ComPtr<ID3D11SamplerState> m_pointSampler;
         ComPtr<IDXGISwapChain1> m_dxgiSwapchain;
 
         xr::ActionSetHandle m_actionSet;
