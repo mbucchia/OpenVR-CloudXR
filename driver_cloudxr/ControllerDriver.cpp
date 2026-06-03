@@ -416,8 +416,6 @@ namespace {
             const bool isLeft = m_role == vr::TrackedControllerRole_LeftHand;
             TraceLoggingWriteStart(local, "ControllerDriver_CreateBindings", TLArg(isLeft ? "Left" : "Right", "Role"));
 
-            const vr::PropertyContainerHandle_t container =
-                vr::VRProperties()->TrackedDeviceToPropertyContainer(m_deviceIndex);
             std::vector<XrActionSuggestedBinding> bindings;
 
             // Binding for the pose. We use the aim pose.
