@@ -20,6 +20,7 @@
     "cloudxr_foveation_inset": 40,
     "head_prediction_blend": 1,
     "controller_prediction_blend": 0,
+    "submit_depth": false,
     "running_start": 1
   }
 }

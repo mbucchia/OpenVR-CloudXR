@@ -248,6 +248,14 @@
         "type": "bool"
       },
       {
+        "name": "/settings/driver_cloudxr/submit_depth",
+        "control": "toggle",
+        "label": "Submit Depth Buffer",
+        "requires": {
+          "/settings/driver_cloudxr/developer_mode": true
+        }
+      },
+      {
         "name": "/settings/driver_cloudxr/running_start",
         "control": "slider",
         "type": "float",
