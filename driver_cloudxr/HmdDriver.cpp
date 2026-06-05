@@ -83,6 +83,7 @@ namespace {
                     m_instance.Get(), m_system.Id, XR_VIEW_CONFIGURATION_TYPE_PRIMARY_STEREO, &properties));
                 m_isFovMutable = properties.fovMutable;
                 DriverLog(m_isFovMutable ? "Instance supports mutable FOV" : "Instance does not support mutable FOV");
+                // TODO: Implement a FOV tangent reprojection shader.
                 vr::VRSettings()->SetBool("driver_cloudxr", "allow_fov_tangents", m_isFovMutable);
             }
 
@@ -632,6 +633,7 @@ namespace {
                     continue;
                 }
 
+                // TODO: Submit depth. This is useful when SteamVR OpenXR is used.
                 StoreXrPose(&layer.views[eye].pose, LoadHmdMatrix34(perEye[eye].mHmdPose));
                 DirectX::XMFLOAT4X4 projection;
                 DirectX::XMStoreFloat4x4(&projection, LoadHmdMatrix44(perEye[eye].mProjection));
@@ -970,8 +972,20 @@ namespace {
 
             // Pump all events. We do nothing with them at this time.
             {
+                bool requestExit = false;
+                XrResult result;
                 XrEventDataBuffer buffer = {XR_TYPE_EVENT_DATA_BUFFER};
-                while (xrPollEvent(m_instance.Get(), &buffer) == XR_SUCCESS) {
+                while ((result = xrPollEvent(m_instance.Get(), &buffer)) == XR_SUCCESS) {
+                    requestExit = requestExit || buffer.type == XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING;
+                }
+
+                // Detect loss of CloudXR instance (eg: client disconnected).
+                requestExit = requestExit || result == XR_ERROR_INSTANCE_LOST;
+                if (requestExit) {
+                    TraceLoggingWriteTagged(local, "HmdDriver_RunFrame_RequestExit", TLArg(m_deviceIndex, "ObjectId"));
+                    vr::VREvent_Reserved_t event = {0, 0};
+                    vr::VRServerDriverHost()->VendorSpecificEvent(
+                        m_deviceIndex, vr::VREvent_DriverRequestedQuit, (vr::VREvent_Data_t&)event, 0);
                 }
             }
 
