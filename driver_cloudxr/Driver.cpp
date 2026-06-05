@@ -38,6 +38,7 @@ namespace {
     std::unique_ptr<driver::IHmdDriver> hmdDriver;
 
     const std::vector<const char*> k_RequestedExtensions = {
+        XR_KHR_COMPOSITION_LAYER_DEPTH_EXTENSION_NAME,
         XR_KHR_D3D11_ENABLE_EXTENSION_NAME,
         XR_KHR_VISIBILITY_MASK_EXTENSION_NAME,
         XR_KHR_WIN32_CONVERT_PERFORMANCE_COUNTER_TIME_EXTENSION_NAME,

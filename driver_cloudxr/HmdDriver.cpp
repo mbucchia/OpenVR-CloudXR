@@ -35,6 +35,7 @@
 
 #include "FullscreenQuadVS.h"
 #include "YFlipPS.h"
+#include "YFlipDepthPS.h"
 #include "SharpeningCS.h"
 #include "SharpeningPS.h"
 #include "SharpeningSrgbCS.h"
@@ -77,6 +78,8 @@ namespace {
                                                            : "Instance does not hand interaction profile");
             DriverLog(m_extensions.SupportsVisibilityMask ? "Instance supports visibility mask"
                                                           : "Instance does not support visibility mask");
+            DriverLog(m_extensions.SupportsDepthInfo ? "Instance supports submitting depth"
+                                                     : "Instance does not support submitting depth");
             {
                 XrViewConfigurationProperties properties = {XR_TYPE_VIEW_CONFIGURATION_PROPERTIES};
                 CHECK_XRCMD(xrGetViewConfigurationProperties(
@@ -514,7 +517,7 @@ namespace {
                         // The application texture does not need to be usable for compute.
                         desc.BindFlags &= ~D3D11_BIND_UNORDERED_ACCESS;
                         // Ensure format is typed (for OpenGL interop).
-                        desc.Format = GetTypedFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat);
+                        desc.Format = (DXGI_FORMAT)swapset->info.format;
                         CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
                             &desc, nullptr, swapset->textures[index].ReleaseAndGetAddressOf()));
                     } else {
@@ -627,57 +630,84 @@ namespace {
 
             // TODO: "Now playing" layer seems to obstruct game layer.
             FrameLayer layer;
+            layer.hasDepth = m_useDepth;
             uint32_t goodViewsCount = 0;
             for (uint32_t eye = 0; eye < xr::StereoView::Count; eye++) {
                 if (!perEye[eye].hTexture) {
                     continue;
                 }
 
-                // TODO: Submit depth. This is useful when SteamVR OpenXR is used.
+                // Setup projection and depth info.
                 StoreXrPose(&layer.views[eye].pose, LoadHmdMatrix34(perEye[eye].mHmdPose));
                 DirectX::XMFLOAT4X4 projection;
                 DirectX::XMStoreFloat4x4(&projection, LoadHmdMatrix44(perEye[eye].mProjection));
                 layer.views[eye].fov = DecomposeProjectionMatrix(projection);
+                NearFar nearFar = GetProjectionNearFar(projection);
+                layer.depthLayers[eye].nearZ = nearFar.Near;
+                layer.depthLayers[eye].farZ = nearFar.Far;
+                layer.depthLayers[eye].minDepth = 0.f;
+                layer.depthLayers[eye].maxDepth = 1.f;
+
+                // Setup swapchains submission.
+                TextureSwapset *color = nullptr, *depth = nullptr;
                 for (auto it = m_swapsets.begin(); it != m_swapsets.end(); it++) {
                     if ((*it)->handles[0] == (HANDLE)perEye[eye].hTexture ||
                         (*it)->handles[1] == (HANDLE)perEye[eye].hTexture ||
                         (*it)->handles[2] == (HANDLE)perEye[eye].hTexture) {
-                        auto& swapset = *it;
-                        layer.views[eye].subImage.swapchain = swapset->swapchain.Get();
-
-                        // Special case: handle Y-flip for certain layers.
-                        auto bounds = perEye[eye].bounds;
-                        if (bounds.vMin > bounds.vMax) {
-                            std::swap(bounds.vMin, bounds.vMax);
-                            if (m_isFovMutable) {
-                                std::swap(layer.views[eye].fov.angleUp, layer.views[eye].fov.angleDown);
-                            } else {
-                                swapset->doYFlip = true;
-                            }
-                        }
-
-                        layer.views[eye].subImage.imageRect = swapset->layerRect = {
-                            {
-                                std::clamp((int32_t)std::round(bounds.uMin * swapset->info.width),
-                                           0,
-                                           (int32_t)swapset->info.width),
-                                std::clamp((int32_t)std::round(bounds.vMin * swapset->info.height),
-                                           0,
-                                           (int32_t)swapset->info.height),
-                            },
-                            {
-                                std::clamp((int32_t)std::round((bounds.uMax - bounds.uMin) * swapset->info.width),
-                                           0,
-                                           (int32_t)swapset->info.width),
-                                std::clamp((int32_t)std::round((bounds.vMax - bounds.vMin) * swapset->info.height),
-                                           0,
-                                           (int32_t)swapset->info.height),
-
-                            }};
-                        swapset->layerIndex = (uint32_t)m_frameLayers.size();
-                        goodViewsCount++;
+                        color = it->get();
+                    }
+                    if ((*it)->handles[0] == (HANDLE)perEye[eye].hDepthTexture ||
+                        (*it)->handles[1] == (HANDLE)perEye[eye].hDepthTexture ||
+                        (*it)->handles[2] == (HANDLE)perEye[eye].hDepthTexture) {
+                        depth = it->get();
                     }
                 }
+
+                if (!color) {
+                    continue;
+                }
+                layer.hasDepth = layer.hasDepth && depth;
+
+                layer.views[eye].subImage.swapchain = color->swapchain.Get();
+                color->layerIndex = (uint32_t)m_frameLayers.size();
+                if (depth) {
+                    layer.depthLayers[eye].subImage.swapchain = depth->swapchain.Get();
+                }
+
+                // Special case: handle Y-flip for certain layers.
+                auto bounds = perEye[eye].bounds;
+                if (bounds.vMin > bounds.vMax) {
+                    std::swap(bounds.vMin, bounds.vMax);
+                    if (m_isFovMutable) {
+                        std::swap(layer.views[eye].fov.angleUp, layer.views[eye].fov.angleDown);
+                    } else {
+                        color->doYFlip = true;
+                        if (depth) {
+                            depth->doYFlip = true;
+                        }
+                    }
+                }
+
+                const auto getImageRect = [&bounds](const TextureSwapset& swapset) -> XrRect2Di {
+                    const int32_t width = swapset.info.width;
+                    const int32_t height = swapset.info.height;
+                    return {{
+                                std::clamp((int32_t)std::round(bounds.uMin * width), 0, width),
+                                std::clamp((int32_t)std::round(bounds.vMin * height), 0, height),
+                            },
+                            {
+                                std::clamp((int32_t)std::round((bounds.uMax - bounds.uMin) * width), 0, width),
+                                std::clamp((int32_t)std::round((bounds.vMax - bounds.vMin) * height), 0, height),
+                            }};
+                };
+
+                layer.views[eye].subImage.imageRect = color->layerRect = getImageRect(*color);
+                if (depth) {
+                    layer.depthLayers[eye].subImage.imageRect = depth->layerRect = getImageRect(*depth);
+                }
+
+                goodViewsCount++;
+
                 TraceLoggingWriteTagged(local,
                                         "HmdDriver_SubmitLayer",
                                         TLArg(eye == vr::Eye_Left ? "Left" : "Right", "Eye"),
@@ -761,6 +791,12 @@ namespace {
                 projection.viewCount = xr::StereoView::Count;
                 projection.layerFlags = layerIndex > 0 ? XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT : 0;
                 projection.space = m_referenceSpace.Get();
+                if (m_frameLayers[layerIndex].hasDepth) {
+                    m_frameLayers[layerIndex].views[xr::StereoView::Left].next =
+                        &m_frameLayers[layerIndex].depthLayers[xr::StereoView::Left];
+                    m_frameLayers[layerIndex].views[xr::StereoView::Right].next =
+                        &m_frameLayers[layerIndex].depthLayers[xr::StereoView::Right];
+                }
                 layers.push_back((XrCompositionLayerBaseHeader*)&projection);
             }
             frameInfo.layers = layers.data();
@@ -824,6 +860,9 @@ namespace {
                     local, "HmdDriver_PostPresent_VsyncEvent", TLArg(vsyncTimeOffset, "VsyncTimeOffset"));
                 vr::VRServerDriverHost()->VsyncEvent(vsyncTimeOffset);
 
+                m_useDepth =
+                    m_extensions.SupportsDepthInfo && vr::VRSettings()->GetBool("driver_cloudxr", "submit_depth");
+
                 // Acquire swapset images for the upcoming frame.
                 {
                     std::shared_lock lock(m_swapsetsMutex);
@@ -832,6 +871,10 @@ namespace {
                         auto& swapset = *it;
 
                         if (swapset.acquiredIndex) {
+                            continue;
+                        }
+
+                        if (!m_useDepth && IsDepthFormat((DXGI_FORMAT)swapset.info.format)) {
                             continue;
                         }
 
@@ -1269,7 +1312,9 @@ namespace {
                     ID3D11Texture2D* inputTexture = swapset.textures[*swapset.acquiredIndex].Get();
                     ID3D11Texture2D* swapchainTexture = swapset.swapchainTextures[*swapset.acquiredIndex].Get();
 
-                    if (swapset.layerIndex == 0 && m_sharpening > 0) {
+                    const bool isDepth = IsDepthFormat((DXGI_FORMAT)swapset.info.format);
+
+                    if (!isDepth && swapset.layerIndex == 0 && m_sharpening > 0) {
                         // Setup common resources for sharpening.
                         ShaderConstants constants = {};
                         constants.topLeft = swapset.layerRect.offset;
@@ -1282,7 +1327,7 @@ namespace {
                                  (AF1)swapset.layerRect.extent.height,
                                  (AF1)swapset.layerRect.extent.width,
                                  (AF1)swapset.layerRect.extent.height);
-                        m_d3d11Context->UpdateSubresource(m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
+                        m_d3d11Context->UpdateSubresource(m_shaderConstants.Get(), 0, nullptr, &constants, 0, 0);
 
                         ComPtr<ID3D11ShaderResourceView> srv;
                         {
@@ -1303,7 +1348,7 @@ namespace {
                                                             : m_sharpeningShader[0].Get(),
                                                         nullptr,
                                                         0);
-                            m_d3d11Context->CSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                            m_d3d11Context->CSSetConstantBuffers(0, 1, m_shaderConstants.GetAddressOf());
                             m_d3d11Context->CSSetShaderResources(0, 1, srv.GetAddressOf());
                             ComPtr<ID3D11UnorderedAccessView> uav;
                             {
@@ -1339,7 +1384,7 @@ namespace {
                             m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
                             m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
                             m_d3d11Context->PSSetShader(m_sharpeningShaderAlt.Get(), nullptr, 0);
-                            m_d3d11Context->PSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                            m_d3d11Context->PSSetConstantBuffers(0, 1, m_shaderConstants.GetAddressOf());
                             m_d3d11Context->PSSetShaderResources(0, 1, srv.GetAddressOf());
                             ComPtr<ID3D11RenderTargetView> rtv;
                             {
@@ -1380,31 +1425,38 @@ namespace {
                         ShaderConstants constants = {};
                         constants.topLeft = swapset.layerRect.offset;
                         constants.extent = swapset.layerRect.extent;
-                        m_d3d11Context->UpdateSubresource(m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
+                        m_d3d11Context->UpdateSubresource(m_shaderConstants.Get(), 0, nullptr, &constants, 0, 0);
 
                         m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
                         m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
-                        m_d3d11Context->PSSetShader(m_yFlipShader.Get(), nullptr, 0);
-                        m_d3d11Context->PSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                        m_d3d11Context->PSSetShader(m_yFlipShader[!isDepth ? 0 : 1].Get(), nullptr, 0);
+                        m_d3d11Context->PSSetConstantBuffers(0, 1, m_shaderConstants.GetAddressOf());
                         ComPtr<ID3D11ShaderResourceView> srv;
                         {
                             D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
                             desc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-                            desc.Format = (DXGI_FORMAT)swapset.info.format;
+                            desc.Format = GetSrvFormat((DXGI_FORMAT)swapset.info.format);
                             desc.Texture2D.MipLevels = 1;
                             CHECK_HRCMD(m_d3d11Device->CreateShaderResourceView(
                                 inputTexture, &desc, srv.ReleaseAndGetAddressOf()));
                         }
                         m_d3d11Context->PSSetShaderResources(0, 1, srv.GetAddressOf());
                         ComPtr<ID3D11RenderTargetView> rtv;
-                        {
+                        ComPtr<ID3D11DepthStencilView> dsv;
+                        if (!isDepth) {
                             D3D11_RENDER_TARGET_VIEW_DESC desc = {};
                             desc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
                             desc.Format = (DXGI_FORMAT)swapset.info.format;
                             CHECK_HRCMD(m_d3d11Device->CreateRenderTargetView(
                                 swapchainTexture, &desc, rtv.ReleaseAndGetAddressOf()));
+                        } else {
+                            D3D11_DEPTH_STENCIL_VIEW_DESC desc = {};
+                            desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+                            desc.Format = (DXGI_FORMAT)swapset.info.format;
+                            CHECK_HRCMD(m_d3d11Device->CreateDepthStencilView(
+                                swapchainTexture, &desc, dsv.ReleaseAndGetAddressOf()));
                         }
-                        m_d3d11Context->OMSetRenderTargets(1, rtv.GetAddressOf(), nullptr);
+                        m_d3d11Context->OMSetRenderTargets(!isDepth ? 1 : 0, rtv.GetAddressOf(), dsv.Get());
                         D3D11_VIEWPORT viewport = {};
                         viewport.TopLeftX = (float)swapset.layerRect.offset.x;
                         viewport.TopLeftY = (float)swapset.layerRect.offset.y;
@@ -1412,7 +1464,8 @@ namespace {
                         viewport.Height = (float)swapset.layerRect.extent.height;
                         viewport.MaxDepth = 1.f;
                         m_d3d11Context->RSSetViewports(1, &viewport);
-                        m_d3d11Context->OMSetDepthStencilState(m_noDepthTest.Get(), 0xff);
+                        m_d3d11Context->OMSetDepthStencilState(
+                            !isDepth ? m_noDepthTest.Get() : m_depthPassthroughState.Get(), 0xff);
 
                         m_d3d11Context->Draw(3, 0);
 
@@ -1527,7 +1580,9 @@ namespace {
                 CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
                     k_SharpeningPS, sizeof(k_SharpeningPS), nullptr, m_sharpeningShaderAlt.ReleaseAndGetAddressOf()));
                 CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
-                    k_YFlipPS, sizeof(k_YFlipPS), nullptr, m_yFlipShader.ReleaseAndGetAddressOf()));
+                    k_YFlipPS, sizeof(k_YFlipPS), nullptr, m_yFlipShader[0].ReleaseAndGetAddressOf()));
+                CHECK_HRCMD(m_d3d11Device->CreatePixelShader(
+                    k_YFlipDepthPS, sizeof(k_YFlipDepthPS), nullptr, m_yFlipShader[1].ReleaseAndGetAddressOf()));
 
                 {
                     D3D11_BUFFER_DESC desc = {};
@@ -1535,11 +1590,19 @@ namespace {
                     desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
                     desc.Usage = D3D11_USAGE_DEFAULT;
                     CHECK_HRCMD(
-                        m_d3d11Device->CreateBuffer(&desc, nullptr, m_sharpeningConstants.ReleaseAndGetAddressOf()));
+                        m_d3d11Device->CreateBuffer(&desc, nullptr, m_shaderConstants.ReleaseAndGetAddressOf()));
                 }
                 {
                     D3D11_DEPTH_STENCIL_DESC desc = {};
                     CHECK_HRCMD(m_d3d11Device->CreateDepthStencilState(&desc, m_noDepthTest.ReleaseAndGetAddressOf()));
+                }
+                {
+                    D3D11_DEPTH_STENCIL_DESC desc{};
+                    desc.DepthEnable = TRUE;
+                    desc.DepthFunc = D3D11_COMPARISON_ALWAYS;
+                    desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+                    CHECK_HRCMD(m_d3d11Device->CreateDepthStencilState(
+                        &desc, m_depthPassthroughState.ReleaseAndGetAddressOf()));
                 }
             }
 
@@ -1716,6 +1779,9 @@ namespace {
         struct FrameLayer {
             XrCompositionLayerProjectionView views[xr::StereoView::Count] = {
                 {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}, {XR_TYPE_COMPOSITION_LAYER_PROJECTION_VIEW}};
+            XrCompositionLayerDepthInfoKHR depthLayers[xr::StereoView::Count] = {
+                {XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR}, {XR_TYPE_COMPOSITION_LAYER_DEPTH_INFO_KHR}};
+            bool hasDepth = false;
         };
 
         vr::TrackedDeviceIndex_t m_deviceIndex = vr::k_unTrackedDeviceIndexInvalid;
@@ -1741,12 +1807,15 @@ namespace {
         LUID m_adapterLuid = {};
         ComPtr<ID3D11Device1> m_d3d11Device;
         ComPtr<ID3D11DeviceContext1> m_d3d11Context;
+        // [0] = linear, [1] = sRGB
         ComPtr<ID3D11ComputeShader> m_sharpeningShader[2];
         ComPtr<ID3D11VertexShader> m_fullscreenQuadShader;
         ComPtr<ID3D11PixelShader> m_sharpeningShaderAlt;
-        ComPtr<ID3D11Buffer> m_sharpeningConstants;
-        ComPtr<ID3D11PixelShader> m_yFlipShader;
+        ComPtr<ID3D11Buffer> m_shaderConstants;
+        // [0] = color, [1] = depth
+        ComPtr<ID3D11PixelShader> m_yFlipShader[2];
         ComPtr<ID3D11DepthStencilState> m_noDepthTest;
+        ComPtr<ID3D11DepthStencilState> m_depthPassthroughState;
         ComPtr<IDXGISwapChain1> m_dxgiSwapchain;
 
         xr::ActionSetHandle m_actionSet;
@@ -1770,6 +1839,7 @@ namespace {
         ComPtr<IDXGIKeyedMutex> m_syncMutex;
 
         std::vector<FrameLayer> m_frameLayers;
+        bool m_useDepth = false;
 
         wil::unique_handle m_sharedFileHandle;
         shared::SharedMemory* m_sharedMemory = nullptr;
