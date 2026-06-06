@@ -23,6 +23,7 @@
 #include "pch.h"
 
 #include "ControllerDriver.h"
+#include "HmdDriver.h"
 #include "Tracing.h"
 #include "Utilities.h"
 
@@ -195,7 +196,7 @@ namespace {
                 (std::string(personality.prettyName) + (isLeft ? " (Left Controller)" : " (Right Controller)"))
                     .c_str());
             vr::VRProperties()->SetStringProperty(container, vr::Prop_SerialNumber_String, GetSerialNumber());
-            vr::VRProperties()->SetUint64Property(container, vr::Prop_CurrentUniverseId_Uint64, 1);
+            vr::VRProperties()->SetUint64Property(container, vr::Prop_CurrentUniverseId_Uint64, driver::k_UniverseId);
             vr::VRProperties()->SetStringProperty(
                 container, vr::Prop_InputProfilePath_String, personality.interactionProfile);
             vr::VRProperties()->SetStringProperty(

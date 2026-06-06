@@ -142,7 +142,7 @@ namespace {
             vr::VRProperties()->SetStringProperty(container, vr::Prop_SerialNumber_String, GetSerialNumber());
 
             vr::VRProperties()->SetStringProperty(container, vr::Prop_RenderModelName_String, "generic_hmd");
-            vr::VRProperties()->SetUint64Property(container, vr::Prop_CurrentUniverseId_Uint64, 1);
+            vr::VRProperties()->SetUint64Property(container, vr::Prop_CurrentUniverseId_Uint64, driver::k_UniverseId);
 
             vr::VRProperties()->SetBoolProperty(container, vr::Prop_IsOnDesktop_Bool, false);
 

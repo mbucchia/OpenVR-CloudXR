@@ -24,6 +24,8 @@
 
 namespace driver {
 
+    static constexpr uint64_t k_UniverseId = 0x436C6F75645852ull; // "CloudXR"
+
     struct IHmdDriver : public vr::ITrackedDeviceServerDriver {
         virtual ~IHmdDriver() = default;
         virtual void SendHapticEvent(const vr::VREvent_HapticVibration_t& data) = 0;
