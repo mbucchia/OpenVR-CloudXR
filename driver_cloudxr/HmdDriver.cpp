@@ -463,10 +463,16 @@ namespace {
                 swapset->info.width = pSwapTextureSetDesc->nWidth;
                 swapset->info.height = pSwapTextureSetDesc->nHeight;
                 swapset->info.sampleCount = pSwapTextureSetDesc->nSampleCount;
-                swapset->info.usageFlags = (!IsDepthFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat)
-                                                ? XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT
-                                                : XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
+                const bool isDepth = IsDepthFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat);
+                swapset->info.usageFlags = (!isDepth ? XR_SWAPCHAIN_USAGE_COLOR_ATTACHMENT_BIT
+                                                     : XR_SWAPCHAIN_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) |
                                            XR_SWAPCHAIN_USAGE_SAMPLED_BIT;
+
+                DriverLog("Allocating swapchain %ux%u @ %d (%ux)",
+                          pSwapTextureSetDesc->nWidth,
+                          pSwapTextureSetDesc->nHeight,
+                          pSwapTextureSetDesc->nFormat,
+                          pSwapTextureSetDesc->nSampleCount);
 
                 // Most runtimes are capable of creating UAV-compatible swapchains, even with SRGB formats. However
                 // CloudXR is not. Try with a fallback, and sharpening needs to be run with a Pixel Shader.
@@ -514,7 +520,7 @@ namespace {
                         // The application texture does not need to be usable for compute.
                         desc.BindFlags &= ~D3D11_BIND_UNORDERED_ACCESS;
                         // Ensure format is typed (for OpenGL interop).
-                        desc.Format = GetTypedFormat((DXGI_FORMAT)pSwapTextureSetDesc->nFormat);
+                        desc.Format = (DXGI_FORMAT)swapset->info.format;
                         CHECK_HRCMD(m_d3d11Device->CreateTexture2D(
                             &desc, nullptr, swapset->textures[index].ReleaseAndGetAddressOf()));
                     } else {
@@ -536,6 +542,15 @@ namespace {
                 // Acquire the first image.
                 swapset->acquiredIndex = swapset->nextIndex++;
                 swapset->nextIndex = swapset->nextIndex < 3 ? swapset->nextIndex : 0;
+
+                // TODO: If depth swapchain, we don't actually need to allocate the OpenXR swapchain.
+                // Here we (lazily) destroy them after.
+                if (isDepth) {
+                    swapset->swapchainTextures[0].Reset();
+                    swapset->swapchainTextures[1].Reset();
+                    swapset->swapchainTextures[2].Reset();
+                    swapset->swapchain.Reset();
+                }
             }
 
             TraceLoggingWriteStop(local, "HmdDriver_CreateSwapTextureSet");
@@ -633,51 +648,52 @@ namespace {
                     continue;
                 }
 
-                // TODO: Submit depth. This is useful when SteamVR OpenXR is used.
                 StoreXrPose(&layer.views[eye].pose, LoadHmdMatrix34(perEye[eye].mHmdPose));
                 DirectX::XMFLOAT4X4 projection;
                 DirectX::XMStoreFloat4x4(&projection, LoadHmdMatrix44(perEye[eye].mProjection));
                 layer.views[eye].fov = DecomposeProjectionMatrix(projection);
+
+                TextureSwapset* color = nullptr;
                 for (auto it = m_swapsets.begin(); it != m_swapsets.end(); it++) {
                     if ((*it)->handles[0] == (HANDLE)perEye[eye].hTexture ||
                         (*it)->handles[1] == (HANDLE)perEye[eye].hTexture ||
                         (*it)->handles[2] == (HANDLE)perEye[eye].hTexture) {
-                        auto& swapset = *it;
-                        layer.views[eye].subImage.swapchain = swapset->swapchain.Get();
-
-                        // Special case: handle Y-flip for certain layers.
-                        auto bounds = perEye[eye].bounds;
-                        if (bounds.vMin > bounds.vMax) {
-                            std::swap(bounds.vMin, bounds.vMax);
-                            if (m_isFovMutable) {
-                                std::swap(layer.views[eye].fov.angleUp, layer.views[eye].fov.angleDown);
-                            } else {
-                                swapset->doYFlip = true;
-                            }
-                        }
-
-                        layer.views[eye].subImage.imageRect = swapset->layerRect = {
-                            {
-                                std::clamp((int32_t)std::round(bounds.uMin * swapset->info.width),
-                                           0,
-                                           (int32_t)swapset->info.width),
-                                std::clamp((int32_t)std::round(bounds.vMin * swapset->info.height),
-                                           0,
-                                           (int32_t)swapset->info.height),
-                            },
-                            {
-                                std::clamp((int32_t)std::round((bounds.uMax - bounds.uMin) * swapset->info.width),
-                                           0,
-                                           (int32_t)swapset->info.width),
-                                std::clamp((int32_t)std::round((bounds.vMax - bounds.vMin) * swapset->info.height),
-                                           0,
-                                           (int32_t)swapset->info.height),
-
-                            }};
-                        swapset->layerIndex = (uint32_t)m_frameLayers.size();
-                        goodViewsCount++;
+                        color = it->get();
                     }
                 }
+                if (!color) {
+                    continue;
+                }
+
+                layer.views[eye].subImage.swapchain = color->swapchain.Get();
+                color->layerIndex = (uint32_t)m_frameLayers.size();
+
+                // Special case: handle Y-flip for certain layers.
+                auto bounds = perEye[eye].bounds;
+                if (bounds.vMin > bounds.vMax) {
+                    std::swap(bounds.vMin, bounds.vMax);
+                    if (m_isFovMutable) {
+                        std::swap(layer.views[eye].fov.angleUp, layer.views[eye].fov.angleDown);
+                    } else {
+                        color->doYFlip = true;
+                    }
+                }
+
+                {
+                    const int32_t width = color->info.width;
+                    const int32_t height = color->info.height;
+                    layer.views[eye].subImage.imageRect = color->layerRect = {
+                        {
+                            std::clamp((int32_t)std::round(bounds.uMin * width), 0, width),
+                            std::clamp((int32_t)std::round(bounds.vMin * height), 0, height),
+                        },
+                        {
+                            std::clamp((int32_t)std::round((bounds.uMax - bounds.uMin) * width), 0, width),
+                            std::clamp((int32_t)std::round((bounds.vMax - bounds.vMin) * height), 0, height),
+                        }};
+                }
+
+                goodViewsCount++;
                 TraceLoggingWriteTagged(local,
                                         "HmdDriver_SubmitLayer",
                                         TLArg(eye == vr::Eye_Left ? "Left" : "Right", "Eye"),
@@ -835,14 +851,24 @@ namespace {
                             continue;
                         }
 
+                        const bool isDepth = IsDepthFormat((DXGI_FORMAT)swapset.info.format);
+
                         swapset.acquiredIndex = swapset.nextIndex++;
                         swapset.nextIndex = swapset.nextIndex < 3 ? swapset.nextIndex : 0;
 
-                        // Create a dependency on the GPU with the sync texture.
-                        D3D11_BOX box = {};
-                        box.right = box.bottom = box.back = 1;
-                        m_d3d11Context->CopySubresourceRegion(
-                            m_syncTexture.Get(), 0, 0, 0, 0, swapset.textures[*swapset.acquiredIndex].Get(), 0, &box);
+                        if (!isDepth) {
+                            // Create a dependency on the GPU with the sync texture.
+                            D3D11_BOX box = {};
+                            box.right = box.bottom = box.back = 1;
+                            m_d3d11Context->CopySubresourceRegion(m_syncTexture.Get(),
+                                                                  0,
+                                                                  0,
+                                                                  0,
+                                                                  0,
+                                                                  swapset.textures[*swapset.acquiredIndex].Get(),
+                                                                  0,
+                                                                  &box);
+                        }
                     }
                 }
             }
@@ -1258,6 +1284,12 @@ namespace {
                 if (it->acquiredIndex) {
                     auto& swapset = *it;
 
+                    const bool isDepth = IsDepthFormat((DXGI_FORMAT)swapset.info.format);
+                    if (isDepth) {
+                        swapset.acquiredIndex.reset();
+                        continue;
+                    }
+
                     // Flush the render target to the swapchain.
                     uint32_t acquiredIndex;
                     CHECK_XRCMD(xrAcquireSwapchainImage(swapset.swapchain.Get(), nullptr, &acquiredIndex));
@@ -1282,7 +1314,7 @@ namespace {
                                  (AF1)swapset.layerRect.extent.height,
                                  (AF1)swapset.layerRect.extent.width,
                                  (AF1)swapset.layerRect.extent.height);
-                        m_d3d11Context->UpdateSubresource(m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
+                        m_d3d11Context->UpdateSubresource(m_shaderConstants.Get(), 0, nullptr, &constants, 0, 0);
 
                         ComPtr<ID3D11ShaderResourceView> srv;
                         {
@@ -1303,7 +1335,7 @@ namespace {
                                                             : m_sharpeningShader[0].Get(),
                                                         nullptr,
                                                         0);
-                            m_d3d11Context->CSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                            m_d3d11Context->CSSetConstantBuffers(0, 1, m_shaderConstants.GetAddressOf());
                             m_d3d11Context->CSSetShaderResources(0, 1, srv.GetAddressOf());
                             ComPtr<ID3D11UnorderedAccessView> uav;
                             {
@@ -1339,7 +1371,7 @@ namespace {
                             m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
                             m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
                             m_d3d11Context->PSSetShader(m_sharpeningShaderAlt.Get(), nullptr, 0);
-                            m_d3d11Context->PSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                            m_d3d11Context->PSSetConstantBuffers(0, 1, m_shaderConstants.GetAddressOf());
                             m_d3d11Context->PSSetShaderResources(0, 1, srv.GetAddressOf());
                             ComPtr<ID3D11RenderTargetView> rtv;
                             {
@@ -1380,12 +1412,12 @@ namespace {
                         ShaderConstants constants = {};
                         constants.topLeft = swapset.layerRect.offset;
                         constants.extent = swapset.layerRect.extent;
-                        m_d3d11Context->UpdateSubresource(m_sharpeningConstants.Get(), 0, nullptr, &constants, 0, 0);
+                        m_d3d11Context->UpdateSubresource(m_shaderConstants.Get(), 0, nullptr, &constants, 0, 0);
 
                         m_d3d11Context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
                         m_d3d11Context->VSSetShader(m_fullscreenQuadShader.Get(), nullptr, 0);
                         m_d3d11Context->PSSetShader(m_yFlipShader.Get(), nullptr, 0);
-                        m_d3d11Context->PSSetConstantBuffers(0, 1, m_sharpeningConstants.GetAddressOf());
+                        m_d3d11Context->PSSetConstantBuffers(0, 1, m_shaderConstants.GetAddressOf());
                         ComPtr<ID3D11ShaderResourceView> srv;
                         {
                             D3D11_SHADER_RESOURCE_VIEW_DESC desc = {};
@@ -1535,7 +1567,7 @@ namespace {
                     desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
                     desc.Usage = D3D11_USAGE_DEFAULT;
                     CHECK_HRCMD(
-                        m_d3d11Device->CreateBuffer(&desc, nullptr, m_sharpeningConstants.ReleaseAndGetAddressOf()));
+                        m_d3d11Device->CreateBuffer(&desc, nullptr, m_shaderConstants.ReleaseAndGetAddressOf()));
                 }
                 {
                     D3D11_DEPTH_STENCIL_DESC desc = {};
@@ -1741,10 +1773,11 @@ namespace {
         LUID m_adapterLuid = {};
         ComPtr<ID3D11Device1> m_d3d11Device;
         ComPtr<ID3D11DeviceContext1> m_d3d11Context;
+        // [0] = linear, [1] = sRGB
         ComPtr<ID3D11ComputeShader> m_sharpeningShader[2];
         ComPtr<ID3D11VertexShader> m_fullscreenQuadShader;
         ComPtr<ID3D11PixelShader> m_sharpeningShaderAlt;
-        ComPtr<ID3D11Buffer> m_sharpeningConstants;
+        ComPtr<ID3D11Buffer> m_shaderConstants;
         ComPtr<ID3D11PixelShader> m_yFlipShader;
         ComPtr<ID3D11DepthStencilState> m_noDepthTest;
         ComPtr<IDXGISwapChain1> m_dxgiSwapchain;
