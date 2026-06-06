@@ -60,6 +60,14 @@
         "requires_restart": true
       },
       {
+        "name": "/settings/driver_cloudxr/enable_tap_palm",
+        "control": "toggle",
+        "label": "Tap Palm of Hand For Dashboard",
+        "requires": {
+          "/settings/driver_cloudxr/enable_hand_tracking": true
+        }
+      },
+      {
         "name": "/settings/driver_cloudxr/horizontal_fov_tangent",
         "control": "slider",
         "type": "float",

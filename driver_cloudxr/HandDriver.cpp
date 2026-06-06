@@ -306,6 +306,8 @@ namespace {
                                    TLArg(m_deviceIndex, "ObjectId"),
                                    TLArg(m_role == vr::TrackedControllerRole_LeftHand ? "Left" : "Right", "Role"));
 
+            m_useMenuGesture = vr::VRSettings()->GetBool("driver_cloudxr", "enable_tap_palm");
+
             TraceLoggingWriteStop(local, "HandDriver_ApplySettingsChanges");
         }
 
@@ -645,7 +647,7 @@ namespace {
             };
 
             m_indexPinch = jointActionValue(joints[XR_HAND_JOINT_INDEX_TIP_EXT], joints[XR_HAND_JOINT_THUMB_TIP_EXT]);
-            if (isLeft) {
+            if (isLeft && m_useMenuGesture) {
                 m_indexPalmTouch =
                     jointActionValue(joints[XR_HAND_JOINT_INDEX_TIP_EXT], otherJoints[XR_HAND_JOINT_PALM_EXT]) >
                         0.75f ||
@@ -664,6 +666,7 @@ namespace {
         vr::VRInputComponentHandle_t m_components[ComponentCount] = {};
 
         std::string m_serialNumber;
+        bool m_useMenuGesture = false;
 
         bool m_ready = false;
 

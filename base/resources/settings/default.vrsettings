@@ -4,6 +4,7 @@
     "use_windows_key": 3,
     "motion_controllers_personality": 0,
     "enable_hand_tracking": false,
+    "enable_tap_palm": false,
     "allow_fov_tangents": false,
     "horizontal_fov_tangent": 1,
     "vertical_fov_tangent": 1,
