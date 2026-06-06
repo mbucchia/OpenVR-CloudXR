@@ -52,8 +52,8 @@ END
 //
 
 VS_VERSION_INFO VERSIONINFO
- FILEVERSION 1,0,0,0
- PRODUCTVERSION 1,0,0,0
+ FILEVERSION 1,0,1,0
+ PRODUCTVERSION 1,0,1,0
  FILEFLAGSMASK 0x3fL
 #ifdef _DEBUG
  FILEFLAGS 0x1L
@@ -68,12 +68,12 @@ BEGIN
     BEGIN
         BLOCK "040904b0"
         BEGIN
-            VALUE "FileVersion", "1.0.0.0"
+            VALUE "FileVersion", "1.0.1.0"
             VALUE "InternalName", "driver_cloudxr.dll"
             VALUE "LegalCopyright", "Copyright (c) 2026 Matthieu Bucchianeri"
             VALUE "OriginalFilename", "driver_cloudxr.dll"
             VALUE "ProductName", "CloudXR SteamVR driver"
-            VALUE "ProductVersion", "1.0.0.0"
+            VALUE "ProductVersion", "1.0.1.0"
             VALUE "FileDescription", DRIVER_COMMIT_HASH
         END
     END
