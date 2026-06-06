@@ -71,6 +71,7 @@ namespace {
         ComponentSkeleton,
         ComponentIndexPinch,
         ComponentGrip,
+        ComponentMenu,
 
         ComponentCount,
     };
@@ -161,6 +162,10 @@ namespace {
                                                        &m_components[ComponentGrip],
                                                        vr::VRScalarType_Absolute,
                                                        vr::VRScalarUnits_NormalizedOneSided);
+            if (isLeft) {
+                vr::VRDriverInput()->CreateBooleanComponent(
+                    container, "/input/system/click", &m_components[ComponentMenu]);
+            }
 
             // Initialize the OpenXR hand joints tracker.
             {
@@ -169,6 +174,11 @@ namespace {
                 createInfo.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
                 CHECK_XRCMD(
                     xrCreateHandTrackerEXT(m_session.Get(), &createInfo, m_handTracker.Put(xrDestroyHandTrackerEXT)));
+                if (isLeft) {
+                    createInfo.hand = XR_HAND_RIGHT_EXT;
+                    CHECK_XRCMD(xrCreateHandTrackerEXT(
+                        m_session.Get(), &createInfo, m_otherHandTracker.Put(xrDestroyHandTrackerEXT)));
+                }
             }
 
             ApplySettingsChanges();
@@ -536,7 +546,16 @@ namespace {
                 }
 
                 // Detect gestures. These may not be used if the hand interaction profile is active.
-                ProcessHandGestures(joints);
+                {
+                    XrHandJointLocationEXT otherJoints[XR_HAND_JOINT_COUNT_EXT] = {};
+                    if (isLeft) {
+                        locations.next = nullptr;
+                        locations.jointLocations = otherJoints;
+                        locations.jointCount = XR_HAND_JOINT_COUNT_EXT;
+                        CHECK_XRCMD(xrLocateHandJointsEXT(m_otherHandTracker.Get(), &info, &locations));
+                    }
+                    ProcessHandGestures(joints, otherJoints);
+                }
             }
 
             TraceLoggingWriteStop(
@@ -582,6 +601,9 @@ namespace {
                     vr::VRDriverInput()->UpdateScalarComponent(m_components[ComponentIndexPinch], m_indexPinch, 0.0);
                 }
                 updateAnalog(ComponentGrip);
+                if (isLeft) {
+                    vr::VRDriverInput()->UpdateBooleanComponent(m_components[ComponentMenu], m_indexPalmTouch, 0.0);
+                }
             }
 
             TraceLoggingWriteStop(local, "HandDriver_UpdateInputsState");
@@ -596,7 +618,8 @@ namespace {
         }
 
       private:
-        void ProcessHandGestures(XrHandJointLocationEXT (&joints)[XR_HAND_JOINT_COUNT_EXT]) {
+        void ProcessHandGestures(XrHandJointLocationEXT (&joints)[XR_HAND_JOINT_COUNT_EXT],
+                                 XrHandJointLocationEXT (&otherJoints)[XR_HAND_JOINT_COUNT_EXT]) {
             TraceLocalActivity(local);
             const bool isLeft = m_role == vr::TrackedControllerRole_LeftHand;
             TraceLoggingWriteStart(local,
@@ -622,6 +645,12 @@ namespace {
             };
 
             m_indexPinch = jointActionValue(joints[XR_HAND_JOINT_INDEX_TIP_EXT], joints[XR_HAND_JOINT_THUMB_TIP_EXT]);
+            if (isLeft) {
+                m_indexPalmTouch =
+                    jointActionValue(joints[XR_HAND_JOINT_INDEX_TIP_EXT], otherJoints[XR_HAND_JOINT_PALM_EXT]) >
+                        0.75f ||
+                    jointActionValue(otherJoints[XR_HAND_JOINT_INDEX_TIP_EXT], joints[XR_HAND_JOINT_PALM_EXT]) > 0.75f;
+            }
 
             TraceLoggingWriteStop(local, "HandDriver_ProcessHandGestures");
         }
@@ -640,11 +669,13 @@ namespace {
 
         XrPath m_sidePath = XR_NULL_PATH;
         xr::HandTrackerHandle m_handTracker;
+        xr::HandTrackerHandle m_otherHandTracker;
         xr::ActionHandle m_actions[ComponentCount];
         xr::ActionHandle m_trackingPoseAction;
         xr::SpaceHandle m_trackingPoseSpace;
 
         float m_indexPinch = 0.f;
+        bool m_indexPalmTouch = false;
 
         DirectX::XMMATRIX m_poseOffset = DirectX::XMMatrixIdentity();
     };
